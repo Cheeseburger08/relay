@@ -1,0 +1,12 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#256b4c"><link rel="manifest" href="/manifest.webmanifest"><link rel="stylesheet" href="/voice.css"><script type="module" src="/voice.js"></script><title>Relay · Calls</title></head><body><main>
+<p class="brand">RELAY <span>LIVE CALLS</span></p><a href="/">Messages, contacts &amp; settings</a><h1>Your phone, wherever you are</h1>
+<p id="connection" role="status">Connecting…</p>
+<section><h2 id="call-title">No call in progress</h2><p id="caller"></p><p id="call-state"></p>
+<div class="buttons"><button id="answer" hidden>Answer</button><button id="attach" hidden>Connect audio</button><button id="hangup" hidden>End call</button><button id="mute" hidden>Mute microphone</button></div>
+<label for="volume">Caller volume</label><input id="volume" type="range" min="0" max="1" step="0.05" value="0.7">
+<div class="meters"><div><label for="mic">Your microphone</label><meter id="mic" min="0" max="1" value="0"></meter></div><div><label for="caller-level">Caller audio</label><meter id="caller-level" min="0" max="1" value="0"></meter></div></div>
+<p id="message" role="status"></p></section>
+<section><h2>Make a call</h2><label for="number">Phone number</label><input id="number" type="tel" placeholder="+98…" autocomplete="tel"><label for="sim">Use SIM</label><select id="sim"><option value="1">SIM 1</option><option value="2">SIM 2</option></select><div class="buttons"><button id="dial" disabled>Call</button></div><p class="hint">Normal cellular call charges apply.</p></section>
+<section><h2>Incoming-call notifications</h2><button id="notify">Enable notifications &amp; ringtone</button><p id="push-status" class="hint">On iPhone, add Relay to the Home Screen, open it from there, then enable notifications. Tap a notification to open Relay and answer.</p></section>
+<p class="foot">Calls use the Xperia’s SIMs. Keep Relay enabled on the phone. A lost media connection ends a remotely controlled call.</p>
+</main></body></html>

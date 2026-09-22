@@ -1,0 +1,14 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'app.relay.localbackup'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'app.relay.localbackup'
+        minSdk 26
+        targetSdk 28
+        versionCode 1
+        versionName '0.1.0'
+    }
+    // Private Android 8 backup utility, not a Play distribution artifact.
+    lint { disable 'ExpiredTargetSdkVersion' }
+}

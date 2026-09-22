@@ -1,0 +1,6 @@
+id=relay_audio_probe
+name=Relay Local Audio Probe
+version=0.1
+versionCode=1
+author=Relay
+description=Privileged placement for the visible, local-only Relay audio probe. No boot service, network access or audio recording files.

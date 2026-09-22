@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Relay · Live audio test</title><link rel="stylesheet" href="/style.css"><script src="/client.js" type="module"></script></head>
+<body><main><p class="brand">RELAY <span>LOCAL AUDIO TEST</span></p>
+<h1>Talk through your browser</h1>
+<p class="intro">Connect a call on the Xperia, then enable <strong>4. Live browser test</strong> on its screen. Use headphones on this laptop.</p>
+<section aria-label="Call audio controls">
+<label for="route">Call being tested</label><select id="route"><option value="first">SIM 1 — first tested route</option><option value="second">SIM 2 — second tested route</option></select>
+<p class="hint">These routes passed on the last test calls. If speech does not arrive, stop and check the route.</p>
+<div class="buttons"><button id="start" disabled>Start live audio</button><button id="stop" disabled>Stop</button><button id="mute" disabled>Mute microphone</button></div>
+<label for="volume">Caller playback volume</label><input id="volume" type="range" min="0" max="1" step="0.05" value="0.7">
+<div class="meters"><div><label for="mic">Your microphone</label><meter id="mic" min="0" max="1" value="0"></meter></div><div><label for="caller">Caller audio</label><meter id="caller" min="0" max="1" value="0"></meter></div></div>
+<p id="status" role="status">Checking local access…</p><p id="stats" class="hint">No audio session started.</p>
+<details><summary>Audio delay diagnostics</summary><p id="latency" class="hint">Available during the next test. These measurements exclude cellular-network delay.</p></details>
+</section><p class="foot">USB test · Two-minute limit · No recordings saved<br>Stopping audio leaves the cellular call connected. End the call on the phone.</p>
+</main></body></html>

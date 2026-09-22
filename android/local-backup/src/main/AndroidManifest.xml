@@ -1,0 +1,15 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:name="android.hardware.telephony" android:required="true" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.WRITE_SMS" />
+    <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
+    <instrumentation android:name=".RestoreBackup" android:targetPackage="app.relay.localbackup" android:label="Merge local SMS and call backup" />
+    <instrumentation android:name=".ExportBackup" android:targetPackage="app.relay.localbackup" android:label="Export local SMS and call backup" />
+    <application android:label="Relay Local Backup" android:allowBackup="false"
+        android:icon="@android:drawable/ic_menu_save" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity android:name=".BackupActivity" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,14 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'app.relay.audioprobe'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'app.relay.audioprobe'
+        minSdk 26
+        targetSdk 28
+        versionCode 7
+        versionName '0.2.0'
+    }
+    // Private Android 8 laboratory probe; not a Play distribution artifact.
+    lint { disable 'ExpiredTargetSdkVersion' }
+}

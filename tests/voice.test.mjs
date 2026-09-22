@@ -1,0 +1,108 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {WebSocket} from 'ws';
+import {createStore,hash,secret} from '../server/store.mjs';
+import {createApp} from '../server/app.mjs';
+const until=async fn=>{const end=Date.now()+2500;while(!fn()){if(Date.now()>end)throw Error('Timed out');await new Promise(r=>setTimeout(r,10));}};
+test('Internet call authentication, isolation, signaling and media cleanup',async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'relay-voice-')),store=createStore(dir);
+ const user=store.createUser('voice','Voice','synthetic-test-password'),other=store.createUser('other','Other','synthetic-test-password');
+ const token=secret(),session=secret(),otherSession=secret(),origin='http://localhost:49760';
+ store.run('INSERT INTO devices(id,user_id,token,data) VALUES(?,?,?,?)','test-device',user,hash(token),store.seal({}));
+ for(const [s,u] of [[session,user],[otherSession,other]])store.run('INSERT INTO sessions(token,user_id,csrf,expires) VALUES(?,?,?,?)',hash(s),u,secret(),Date.now()+60000);
+ const app=createApp(store,{origin,voiceOptions:{reconnectGraceMs:500,healthIntervalMs:10}}),server=app.listen(0,'127.0.0.1');app.locals.voice.attach(server);await new Promise(r=>server.once('listening',r));
+ const url=`ws://127.0.0.1:${server.address().port}`,sockets=[];
+ t.after(async()=>{sockets.forEach(s=>s.terminate());app.locals.voice.close();await new Promise(r=>server.close(r));store.db.close();rmSync(dir,{recursive:true,force:true});});
+ async function open(path,headers){const s=new WebSocket(url+path,{headers});s.messages=[];s.on('message',(d,b)=>s.messages.push(b?Buffer.from(d):JSON.parse(d)));sockets.push(s);await new Promise((r,j)=>{s.once('open',r);s.once('error',j);});return s;}
+ await assert.rejects(open('/api/voice/browser',{Origin:'https://evil.example',Cookie:'relay_session='+session}));
+ await assert.rejects(open('/api/voice/device',{Authorization:'Bearer '+secret()}));
+ const phone=await open('/api/voice/device',{Authorization:'Bearer '+token});
+ const browser=await open('/api/voice/browser',{Origin:origin,Cookie:'relay_session='+session});
+ await until(()=>phone.messages.some(m=>m.type==='hello'));
+ assert.ok(Math.abs(phone.messages.find(m=>m.type==='hello').serverTime-Date.now())<2500);
+ browser.send(JSON.stringify({type:'check'}));
+ await until(()=>phone.messages.some(m=>m.action==='check'));
+ const check=phone.messages.find(m=>m.action==='check');
+ assert.equal(check.expires-check.issuedAt,10000);
+ phone.send(JSON.stringify({type:'command_result',id:check.id,accepted:true}));
+ await until(()=>browser.messages.some(m=>m.type==='command_accepted'&&m.action==='check'));
+ const stranger=await open('/api/voice/browser',{Origin:origin,Cookie:'relay_session='+otherSession});
+ const call={id:'test-call-123',state:'ringing',sim:2,number:'+12025550123'};
+ phone.send(JSON.stringify({type:'state',call}));await until(()=>browser.messages.some(m=>m.call?.state==='ringing'));
+ assert.equal(stranger.messages.some(m=>m.call),false);
+ browser.send(JSON.stringify({type:'answer',callId:'wrong-call'}));browser.send(JSON.stringify({type:'answer',callId:call.id}));
+ await until(()=>phone.messages.some(m=>m.action==='answer'));assert.equal(phone.messages.filter(m=>m.action==='answer').length,1);
+ assert.ok(phone.messages.find(m=>m.action==='answer').expires>Date.now());
+ const answer=phone.messages.find(m=>m.action==='answer');
+ phone.send(JSON.stringify({type:'command_result',id:answer.id,accepted:false,code:'expired'}));
+ await until(()=>browser.messages.some(m=>m.type==='error'&&m.message.includes('expired')));
+ await until(()=>phone.messages.some(m=>m.type==='sync'));
+ call.state='active';phone.send(JSON.stringify({type:'state',call}));await until(()=>browser.messages.some(m=>m.call?.state==='active'));
+ browser.send(JSON.stringify({type:'attach',callId:call.id}));await until(()=>browser.messages.some(m=>m.type==='media_ready'));
+ const pcm=Buffer.alloc(640,37);browser.send(pcm);phone.send(pcm);
+ await until(()=>phone.messages.some(Buffer.isBuffer)&&browser.messages.some(Buffer.isBuffer));
+ assert.deepEqual(phone.messages.find(Buffer.isBuffer),pcm);assert.equal(stranger.messages.some(Buffer.isBuffer),false);
+ // Short network backpressure drops a frame without resetting working media.
+ const buffered=Object.getOwnPropertyDescriptor(WebSocket.prototype,'bufferedAmount');
+ let congested=true;
+ Object.defineProperty(WebSocket.prototype,'bufferedAmount',{...buffered,get(){return this.device&&congested?7000:buffered.get.call(this);}});
+ try{const count=phone.messages.filter(Buffer.isBuffer).length;browser.send(pcm);await new Promise(r=>setTimeout(r,50));assert.equal(phone.messages.filter(Buffer.isBuffer).length,count);assert.equal(browser.messages.some(m=>m.type==='recovering'),false);congested=false;browser.send(pcm);await until(()=>phone.messages.filter(Buffer.isBuffer).length>count);}finally{Object.defineProperty(WebSocket.prototype,'bufferedAmount',buffered);}
+ // TCP can deliver several seconds of packets together after a mobile stall.
+ for(let i=0;i<150;i++)browser.send(pcm);
+ await new Promise(r=>setTimeout(r,50));assert.equal(browser.readyState,WebSocket.OPEN);
+ browser.send(JSON.stringify({type:'dtmf',callId:call.id,digit:'12'}));
+ stranger.send(JSON.stringify({type:'dtmf',callId:call.id,digit:'9'}));
+ browser.send(JSON.stringify({type:'dtmf',callId:'wrong-call',digit:'9'}));
+ browser.send(JSON.stringify({type:'dtmf',callId:call.id,digit:'#'}));
+ await until(()=>phone.messages.some(m=>m.action==='dtmf'));
+ const tones=phone.messages.filter(m=>m.action==='dtmf');assert.equal(tones.length,1);assert.equal(tones[0].digit,'#');assert.equal(tones[0].expires-tones[0].issuedAt,1000);
+ // An interruption pauses media immediately but never hangs up immediately.
+ browser.send(JSON.stringify({type:'pause',callId:call.id}));
+ await until(()=>browser.messages.some(m=>m.type==='recovering'));
+ assert.equal(phone.messages.some(m=>m.action==='hangup'),false);
+ browser.send(JSON.stringify({type:'attach',callId:call.id}));
+ await until(()=>browser.messages.filter(m=>m.type==='media_ready').length===2);
+ browser.send(pcm);phone.send(pcm);
+ await until(()=>phone.messages.filter(m=>m.type==='media_restored').length===2);
+ await new Promise(r=>setTimeout(r,600));
+ assert.equal(phone.messages.some(m=>m.action==='hangup'),false,'duplex recovery cancels expiry');
+ // Repeated failures keep the original deadline, rather than starting over.
+ browser.send(JSON.stringify({type:'pause',callId:call.id}));
+ await until(()=>browser.messages.filter(m=>m.type==='recovering').length===2);
+ const firstDeadline=browser.messages.filter(m=>m.type==='recovering').at(-1).remainingMs;
+ await new Promise(r=>setTimeout(r,200));
+ browser.send(JSON.stringify({type:'pause',callId:call.id}));
+ await until(()=>browser.messages.filter(m=>m.type==='recovering').length===3);
+ assert.ok(browser.messages.filter(m=>m.type==='recovering').at(-1).remainingMs<firstDeadline-100);
+ await until(()=>phone.messages.some(m=>m.action==='hangup'));
+ browser.close();
+ phone.send(JSON.stringify({type:'state',call:null}));
+ const second=await open('/api/voice/browser',{Origin:origin,Cookie:'relay_session='+session});
+ second.send(JSON.stringify({type:'dial',number:'+12025550123',sim:1}));second.send(JSON.stringify({type:'dial',number:'+12025550123',sim:1}));
+ await until(()=>second.messages.some(m=>m.type==='error'));assert.equal(phone.messages.filter(m=>m.action==='dial').length,1);
+ phone.send(JSON.stringify({type:'command_error',action:'dial'}));await until(()=>second.messages.some(m=>m.type==='state'&&m.call===null));
+ call.id='explicit-end-call';call.state='active';phone.send(JSON.stringify({type:'state',call}));
+ await until(()=>second.messages.some(m=>m.call?.id===call.id));
+ second.send(JSON.stringify({type:'hangup',callId:call.id}));
+ await until(()=>phone.messages.some(m=>m.action==='hangup'&&m.callId===call.id));
+ // A lost phone connection preserves the call until the same phone returns.
+ phone.send(JSON.stringify({type:'state',call:null}));await until(()=>second.messages.at(-1)?.call===null);
+ call.id='phone-reconnect-call';phone.send(JSON.stringify({type:'state',call}));
+ await until(()=>second.messages.at(-1)?.call?.id===call.id);
+ second.send(JSON.stringify({type:'attach',callId:call.id}));await until(()=>second.messages.some(m=>m.type==='media_ready'));
+ phone.close();await until(()=>second.messages.at(-1)?.type==='state'&&!second.messages.at(-1).online);
+ assert.equal(second.messages.at(-1).call.id,call.id);
+ const replacement=await open('/api/voice/device',{Authorization:'Bearer '+token});replacement.send(JSON.stringify({type:'state',call}));
+ await until(()=>second.messages.at(-1)?.online);
+ const readyCount=second.messages.filter(m=>m.type==='media_ready').length;
+ second.send(JSON.stringify({type:'attach',callId:call.id}));await until(()=>second.messages.filter(m=>m.type==='media_ready').length>readyCount);
+ second.send(pcm);replacement.send(pcm);await until(()=>replacement.messages.some(m=>m.type==='media_restored'));
+ await new Promise(r=>setTimeout(r,600));assert.equal(replacement.messages.some(m=>m.action==='hangup'),false);
+ // Closing the browser also receives a grace window, followed by hangup.
+ second.close();await until(()=>replacement.messages.some(m=>m.type==='media'&&m.recover));
+ assert.equal(replacement.messages.some(m=>m.action==='hangup'),false);
+ await until(()=>replacement.messages.some(m=>m.action==='hangup'));
+});

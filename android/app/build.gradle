@@ -1,0 +1,28 @@
+plugins { id 'com.android.application' }
+tasks.register('verifyNativeUplink') {
+    doLast {
+        def binary=file('src/main/assets/relay-uplink-arm64')
+        def manifest=file('src/main/assets/relay-uplink-arm64.sha256')
+        def source=file('../native/relay-uplink.c')
+        if(!binary.exists() || !manifest.exists())throw new GradleException('Run scripts/build-native-uplink.ps1 before building the companion.')
+        def hashes=manifest.readLines()
+        def sha={ f -> java.security.MessageDigest.getInstance('SHA-256').digest(f.bytes).encodeHex().toString() }
+        if(hashes.size()!=2 || hashes[0]!=sha(source) || hashes[1]!=sha(binary))throw new GradleException('Native uplink is stale: run scripts/build-native-uplink.ps1.')
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'verifyNativeUplink' }
+dependencies { implementation 'com.squareup.okhttp3:okhttp:4.12.0'; testImplementation 'junit:junit:4.13.2' }
+android {
+    // Private Xperia Android 8 sideload prototype, not a Google Play release.
+    lint { disable 'ExpiredTargetSdkVersion' }
+    namespace 'app.relay.companion'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'app.relay.companion'
+        minSdk 26
+        targetSdk 28
+        versionCode 10
+        versionName '0.8.1'
+    }
+    buildTypes { release { minifyEnabled false } }
+}

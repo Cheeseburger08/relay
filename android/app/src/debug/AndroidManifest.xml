@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <instrumentation android:name=".ManagementCheck" android:targetPackage="app.relay.companion" android:label="Synthetic history and block check" />
+    <instrumentation android:name=".ManagementNetworkCheck" android:targetPackage="app.relay.companion" android:label="Synthetic management round trip" />
+    <instrumentation android:name=".ContactSyncCheck" android:targetPackage="app.relay.companion" android:label="Synthetic contact sync check" />
+    <instrumentation android:name=".HistorySyncCheck" android:targetPackage="app.relay.companion" android:label="Read-only history sync check" />
+</manifest>
