@@ -489,6 +489,7 @@ export function createApp(
       .object({ events: z.array(event).max(50) })
       .strict()
       .parse(req.body);
+    const notifications = [];
     const count = store.transaction(() => {
       let accepted = 0;
       for (const e of events) {
@@ -515,6 +516,7 @@ export function createApp(
         );
         if (e.type === "sms") {
           const c = store.conversation(req.user, e.number, e.sim);
+          if(e.direction === "incoming") notifications.push({conversationId:c.id,sim:e.sim});
           store.run(
             "INSERT INTO messages VALUES(?,?,?,?,?,?)",
             randomUUID(),
@@ -546,6 +548,7 @@ export function createApp(
       }
       return accepted;
     });
+    for(const sms of notifications) void app.locals.voice.notifySms(req.user,sms).catch(()=>{});
     res.json({ accepted: count, duplicates: events.length - count });
   });
   app.patch("/api/conversations/:id", auth, (req, res) => {

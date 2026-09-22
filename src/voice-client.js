@@ -159,7 +159,7 @@ export class VoiceClient {
       const subscription=await registration.pushManager.getSubscription()||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
       const r=await fetch('/api/voice/push',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':this.csrf},body:JSON.stringify(subscription)});
       if(!r.ok)throw Error('Notification subscription could not be saved.');
-      this.update({pushStatus:'Incoming-call notifications enabled.'});
+      this.update({pushStatus:'Call and SMS notifications enabled.'});
     }catch(e){this.update({pushStatus:e.message});}
   }
   disconnect(){clearTimeout(this.reconnect);this.clearRecovery();const ws=this.ws;this.ws=null;this.stopAudio();this.ringtone(false);ws?.close();}

@@ -316,3 +316,5 @@ Events distinguish recovery, socket close, rate limit, backpressure, media attac
 and phone audio failures. In-memory records are reset when the service restarts.
 
 History deletion without a provider link now creates a durable pending deletion. The row disappears from browser state immediately; encrypted matching fields are retained until history import provides the exact provider identity. Import then queues the guarded phone deletion and erases the retained payload. Pending links count toward historySync.pending. Claimed/unknown outgoing SMS still require a send result before deletion.
+
+Incoming SMS events now trigger Web Push to the owner's existing notification subscriptions after commit. Replayed events, outgoing SMS and history imports do not notify. Payloads contain SIM and conversation ID, without sender or message contents. SMS notification clicks open the conversation; call notifications retain their call destination.

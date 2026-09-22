@@ -35,13 +35,15 @@ export function registerVoice(app,store,{auth,origin,secure,reconnectGraceMs=REC
     owners.delete(user);broadcast(user);
     for(const b of browsers.get(user)||[])send(b,{type:'recovering',message:reason,remainingMs:Math.max(0,recovery.deadline-Date.now())});
   }
-  async function notify(user,call) {
+  async function push(user,payload,ttl=30) {
     if(!pushReady)return;
     for(const row of store.all('SELECT * FROM push_subscriptions WHERE user_id=?',user)) {
-      try { await webpush.sendNotification(store.open(row.data),JSON.stringify({title:'Incoming Relay call',body:`SIM ${call.sim||'unknown'} is ringing. Open Relay to answer.`,callId:call.id}),{TTL:30,urgency:'high',timeout:10000,vapidDetails:{subject:origin,publicKey,privateKey}}); }
+      try { await webpush.sendNotification(store.open(row.data),JSON.stringify(payload),{TTL:ttl,urgency:'high',timeout:10000,vapidDetails:{subject:origin,publicKey,privateKey}}); }
       catch(e){if([404,410].includes(e.statusCode))store.run('DELETE FROM push_subscriptions WHERE id=?',row.id);}
     }
   }
+  const notify=(user,call)=>push(user,{type:'call',body:`SIM ${call.sim||'unknown'} is ringing. Open Relay to answer.`,callId:call.id});
+  const notifySms=(user,sms)=>push(user,{type:'sms',body:`New message on SIM ${sms.sim}. Open Relay to read it.`,conversationId:sms.conversationId},3600);
   app.get('/api/voice',auth,(req,res)=>res.json({...view(req.user),pushKey:pushReady?publicKey:null}));
   app.get('/api/voice/diagnostics',auth,(req,res)=>res.json({events:diagnostics.get(req.user)||[]}));
   app.post('/api/voice/push',auth,(req,res)=>{
@@ -198,5 +200,5 @@ export function registerVoice(app,store,{auth,origin,secure,reconnectGraceMs=REC
     for(const [user,at] of pending)if(Date.now()-at>15000){pending.delete(user);phones.get(user)?.close(1011,'Call state timeout');}
     for(const [id,r] of acknowledgments)if(Date.now()-r.issuedAt>11000){acknowledgments.delete(id);for(const b of browsers.get(r.user)||[])send(b,{type:'error',message:'The phone did not confirm the call command. Check its connection before trying again.'});send(phones.get(r.user),{type:'sync'});}
   },healthIntervalMs);mediaHealth.unref();
-  return {attach,available:user=>({liveCalls:phones.has(user),push:pushReady}),close(){clearInterval(heartbeat);clearInterval(mediaHealth);for(const ws of wss.clients)ws.terminate();wss.close();}};
+  return {attach,notifySms,available:user=>({liveCalls:phones.has(user),push:pushReady}),close(){clearInterval(heartbeat);clearInterval(mediaHealth);for(const ws of wss.clients)ws.terminate();wss.close();}};
 }

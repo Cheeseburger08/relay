@@ -175,7 +175,7 @@ export default function App() {
         ? "Calls"
         : "Messages",
     ),
-    [selected, setSelected] = useState(null),
+    [selected, setSelected] = useState(new URLSearchParams(location.search).get("conversation")),
     [filter, setFilter] = useState("All"),
     [search, setSearch] = useState("");
   const [modal, setModal] = useState(null),
@@ -1418,10 +1418,10 @@ export default function App() {
                 </div>
                 <div className="settings-row">
                   <div>
-                    <h3>Call notifications</h3>
+                    <h3>Call and SMS notifications</h3>
                     <p>
                       {voice.pushStatus ||
-                        "Get an alert when your phone rings. On iPhone, add Relay to your Home Screen first."}
+                        "Get alerts for incoming calls and SMS. On iPhone, add Relay to your Home Screen first."}
                     </p>
                   </div>
                   <button

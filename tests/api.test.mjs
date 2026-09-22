@@ -12,7 +12,8 @@ test("private phone API contract", async (t) => {
   const owner = store.createUser("alice", "Alice", "a-test-password-only"),
     other = store.createUser("bob", "Bob", "b-test-password-only");
   const origin = "http://localhost:49760",
-    server = createApp(store, { origin }).listen(0, "127.0.0.1");
+    app = createApp(store, { origin }),
+    server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   t.after(async () => {
     await new Promise((r) => server.close(r));
@@ -211,6 +212,8 @@ test("private phone API contract", async (t) => {
   await t.test(
     "incoming events deduplicate, conflicting retries roll back",
     async () => {
+      const alerts=[];
+      app.locals.voice.notifySms=async (user,sms)=>{alerts.push({user,...sms});};
       const sms = {
           id: "incoming-0001",
           type: "sms",
@@ -264,6 +267,10 @@ test("private phone API contract", async (t) => {
       const d = (await request("/state")).data;
       assert.equal(d.messages.length, 2);
       assert.equal(d.calls.length, 1);
+      assert.equal(alerts.length,1,"only new incoming SMS alerts, not duplicates or calls");
+      assert.equal(alerts[0].user,owner);
+      assert.ok(alerts[0].conversationId);
+      assert.equal(alerts[0].text,undefined);
       assert.equal(
         (
           await request("/conversations/" + d.conversations[0].id, {
