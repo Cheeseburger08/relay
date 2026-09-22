@@ -57,3 +57,9 @@ For a USB-only local test, `adb reverse tcp:49760 tcp:49760` forwards the server
 5. Test browser takeover, mute/end, and temporary network loss. Signal levels and successful commands are not proof of intelligible audio.
 
 Contacts synchronize names/numbers, not complete address-book records. Read-only contact providers may reject writes. Network loss, carrier behavior, and browser lifecycle restrictions still need testing in your setup.
+
+## Sync reliability (0.8.2)
+
+SMS claims and delivery reports run separately from contact/history synchronization and event uploads. HTTP requests have a 12-second total timeout. Heartbeat and retry scheduling use elapsed time; SMS expiry uses authenticated server time, so changing the handset clock does not stall sync or extend an SMS deadline. Deleted server commands cannot block later reports. Existing uncertain sends are never automatically resent.
+
+The website distinguishes a working call connection with delayed SMS sync as **Calls only**. **Connected** requires a recent sync heartbeat.

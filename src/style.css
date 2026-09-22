@@ -2326,3 +2326,7 @@ dialog {
   width: 150px;
   flex-shrink: 0;
 }
+
+.dot.sync-delayed {
+  background: var(--warning);
+}

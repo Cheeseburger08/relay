@@ -591,14 +591,22 @@ export default function App() {
               <small>
                 <i
                   className={
-                    data.device?.online && !demo ? "dot" : "dot offline"
+                    demo
+                      ? "dot offline"
+                      : data.device?.online
+                        ? "dot"
+                        : voice.online
+                          ? "dot sync-delayed"
+                          : "dot offline"
                   }
                 />
                 {demo
                   ? "Sample device"
                   : data.device?.online
                     ? "Phone online"
-                    : "Phone offline"}
+                    : voice.online
+                      ? "Calls online; sync delayed"
+                      : "Phone offline"}
               </small>
             </span>
             <ChevronRight size={15} />
@@ -639,9 +647,28 @@ export default function App() {
             {demo ? (
               <span className="preview-badge">Sample workspace</span>
             ) : (
-              <span className="connection-status">
-                <i className={data.device?.online ? "dot" : "dot offline"} />
-                {data.device?.online ? "Connected" : "Offline"}
+              <span
+                className="connection-status"
+                title={
+                  !data.device?.online && voice.online
+                    ? "Calls are connected, but SMS and history sync are delayed"
+                    : undefined
+                }
+              >
+                <i
+                  className={
+                    data.device?.online
+                      ? "dot"
+                      : voice.online
+                        ? "dot sync-delayed"
+                        : "dot offline"
+                  }
+                />
+                {data.device?.online
+                  ? "Connected"
+                  : voice.online
+                    ? "Calls only"
+                    : "Offline"}
               </span>
             )}
             {page === "Messages" && (
@@ -1218,13 +1245,15 @@ export default function App() {
                         ? "Sample device. Not connected."
                         : data.device?.online
                           ? "Online"
-                          : data.device
-                            ? "Offline"
-                            : "Not paired"}
+                          : voice.online
+                            ? "Calls connected; SMS and history sync delayed"
+                            : data.device
+                              ? "Offline"
+                              : "Not paired"}
                     </p>
                     {data.device?.lastSeen > 0 && (
                       <small className="muted">
-                        Last seen {date(data.device.lastSeen)} at{" "}
+                        Last sync {date(data.device.lastSeen)} at{" "}
                         {time(data.device.lastSeen)}
                       </small>
                     )}

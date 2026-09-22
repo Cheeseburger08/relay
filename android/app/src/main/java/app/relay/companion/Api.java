@@ -21,21 +21,25 @@ final class Api {
             throw new IllegalArgumentException("Use an HTTPS server origin, or loopback for USB testing.");
         return u.getScheme() + "://" + u.getRawAuthority();
     }
+    private static final okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
+        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+        .retryOnConnectionFailure(false).followRedirects(false).followSslRedirects(false).build();
     static JSONObject post(String origin, String path, JSONObject body, String token) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection)new URL(origin + "/api/device" + path).openConnection();
-        try {
-            conn.setConnectTimeout(10000); conn.setReadTimeout(10000); conn.setInstanceFollowRedirects(false);
-            conn.setRequestMethod("POST"); conn.setDoOutput(true); conn.setRequestProperty("Content-Type", "application/json");
-            if (token != null) conn.setRequestProperty("Authorization", "Bearer " + token);
-            byte[] bytes = body.toString().getBytes("UTF-8"); conn.setFixedLengthStreamingMode(bytes.length);
-            try (java.io.OutputStream out = conn.getOutputStream()) { out.write(bytes); }
-            int status = conn.getResponseCode(); if (status < 200 || status >= 300) throw new Failure(status);
+        okhttp3.Request.Builder request = new okhttp3.Request.Builder().url(origin + "/api/device" + path)
+            .post(okhttp3.RequestBody.create(okhttp3.MediaType.parse("application/json; charset=utf-8"),body.toString().getBytes("UTF-8")));
+        if(token != null) request.header("Authorization", "Bearer " + token);
+        try(okhttp3.Response response = client.newCall(request.build()).execute()) {
+            if(!response.isSuccessful()) throw new Failure(response.code());
+            if(response.body()==null) throw new IllegalStateException("Empty response");
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            try (InputStream in = conn.getInputStream()) {
-                byte[] buf = new byte[4096]; int n;
-                while ((n = in.read(buf)) != -1) { out.write(buf, 0, n); if (out.size() > 1048576) throw new IllegalStateException("Response too large"); }
+            try(InputStream in=response.body().byteStream()) {
+                byte[] buf=new byte[4096];int n;
+                while((n=in.read(buf))!=-1) { out.write(buf,0,n);if(out.size()>1048576)throw new IllegalStateException("Response too large"); }
             }
             return new JSONObject(out.toString("UTF-8"));
-        } finally { conn.disconnect(); }
+        }
     }
 }

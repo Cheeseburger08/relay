@@ -16,7 +16,8 @@ public class RelayService extends Service {
     static volatile String status = "Relay is idle";
     private ScheduledExecutorService worker;
     private volatile boolean closed;
-    private long heartbeatAt, historyAt, retryAt;
+    private final SyncClock timing = new SyncClock();
+    static volatile String stage = "idle";
     private int failures;
     @Override public void onCreate() {
         super.onCreate();
@@ -26,51 +27,70 @@ public class RelayService extends Service {
         startForeground(1, new Notification.Builder(this,"relay").setContentTitle("Relay is active")
             .setContentText("Phone relay enabled. Tap for call controls or to pause.").setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentIntent(open).setOngoing(true).build());
-        worker = Executors.newSingleThreadScheduledExecutor(); worker.scheduleWithFixedDelay(this::tick,0,3,TimeUnit.SECONDS);
+        worker = Executors.newScheduledThreadPool(3);
+        worker.scheduleWithFixedDelay(this::tick,0,3,TimeUnit.SECONDS);
+        worker.scheduleWithFixedDelay(this::eventTick,1,3,TimeUnit.SECONDS);
+        worker.scheduleWithFixedDelay(this::maintenanceTick,2,20,TimeUnit.SECONDS);
     }
     @Override public int onStartCommand(Intent i, int flags, int id) { return START_STICKY; }
     @Override public IBinder onBind(Intent i) { return null; }
     @Override public void onDestroy() { closed = true; NetworkVoice.close(); if(worker != null) worker.shutdownNow(); super.onDestroy(); }
     private void tick() {
-        if (closed || System.currentTimeMillis() < retryAt) return;
+        if (closed || !timing.ready(SystemClock.elapsedRealtime())) return;
         try {
             JSONObject s = Vault.read(this);
             if (!s.optBoolean("enabled") || !s.has("token")) { stopSelf(); return; }
             NetworkVoice.ensure(this,s);
             String origin = s.getString("origin"), token = s.getString("token");
-            if (System.currentTimeMillis() - heartbeatAt >= 20000) {
+            if (timing.heartbeatDue(SystemClock.elapsedRealtime())) {
+                stage="heartbeat";
                 JSONArray sims = new JSONArray();
                 for(int slot=1;slot<=2;slot++) sims.put(new JSONObject().put("slot",slot).put("label","SIM " + slot).put("available",Sims.subscription(this,slot)>=0));
                 Intent battery = registerReceiver(null,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
                 int level = battery == null ? -1 : battery.getIntExtra(BatteryManager.EXTRA_LEVEL,-1);
                 int scale = battery == null ? -1 : battery.getIntExtra(BatteryManager.EXTRA_SCALE,-1);
-                Api.post(origin,"/heartbeat",new JSONObject().put("model",Build.MODEL).put("battery",level>=0 && scale>0 ? level*100/scale : JSONObject.NULL)
+                long heartbeatStarted = SystemClock.elapsedRealtime();
+                JSONObject heartbeat = Api.post(origin,"/heartbeat",new JSONObject().put("model",Build.MODEL).put("battery",level>=0 && scale>0 ? level*100/scale : JSONObject.NULL)
                     .put("smsReady",Sims.smsReady(this)).put("sims",sims),token);
-                heartbeatAt = System.currentTimeMillis();
-                try { ContactSync.sync(this,origin,token); }
-                catch(Exception e) { ContactSync.status="Contact sync pending; check permissions and connection"; }
-                try { BlockSync.sync(this,origin,token); }
-                catch(Exception e) { BlockSync.status="Blocked-number sync pending; check default phone app and connection"; }
+                timing.heartbeat(heartbeat.getLong("serverTime"),heartbeatStarted);
             }
-            uploadEvents(origin,token);
-            if(System.currentTimeMillis()-historyAt>=20000 && Vault.object(Vault.read(this),"events").length()==0) {
-                try { HistorySync.sync(this,origin,token); historyAt=System.currentTimeMillis(); }
-                catch(Exception e) { HistorySync.status="History import pending; check permissions and connection"; historyAt=System.currentTimeMillis(); }
-            }
+            stage="SMS results";
             uploadResults(origin,token);
             if (Sims.smsReady(this)) {
+                stage="SMS claim";
                 JSONObject command = Api.post(origin,"/commands/claim",new JSONObject(),token).optJSONObject("command");
                 if (command != null) send(command, token);
             }
             failures=0; status="Connected · last contact " + android.text.format.DateFormat.format("HH:mm:ss",System.currentTimeMillis());
         } catch(Api.Failure e) {
-            if(e.status==401 || e.status==404) {
+            if(e.status==401 || (e.status==404 && stage.equals("heartbeat"))) {
                 try { Vault.update(this,s->s.put("enabled",false)); } catch(Exception ignored) { }
                 status="Authorization revoked or device removed. Pair again."; stopSelf();
             } else backoff("Server rejected an operation (HTTP " + e.status + ")");
-        } catch(Exception e) { backoff("Connection or local operation failed; saved events will wait"); }
+        } catch(Exception e) { backoff("SMS sync waiting: " + stage + " (" + e.getClass().getSimpleName() + ")"); }
+        finally { stage="idle"; }
     }
-    private void backoff(String message) { failures=Math.min(failures+1,6); retryAt=System.currentTimeMillis()+Math.min(60000,1000L*(1L<<failures)); status=message; }
+    private void backoff(String message) { failures=Math.min(failures+1,6); timing.retry(SystemClock.elapsedRealtime(),Math.min(60000,1000L*(1L<<failures))); status=message; android.util.Log.i("RelaySync",message); }
+    private JSONObject enabledSettings() throws Exception {
+        if(closed) return null;
+        JSONObject s=Vault.read(this);
+        return s.optBoolean("enabled") && s.has("token") ? s : null;
+    }
+    private void eventTick() {
+        try { JSONObject s=enabledSettings();if(s!=null)uploadEvents(s.getString("origin"),s.getString("token")); }
+        catch(Exception e) { android.util.Log.i("RelaySync","Event upload pending: " + e.getClass().getSimpleName()); }
+    }
+    private void maintenanceTick() {
+        try {
+            JSONObject s=enabledSettings();if(s==null)return;
+            String origin=s.getString("origin"),token=s.getString("token");
+            try { ContactSync.sync(this,origin,token); } catch(Exception e) { ContactSync.status="Contact sync pending; check permissions and connection"; }
+            if(closed)return;
+            try { BlockSync.sync(this,origin,token); } catch(Exception e) { BlockSync.status="Blocked-number sync pending; check default phone app and connection"; }
+            if(closed)return;
+            try { HistorySync.sync(this,origin,token); } catch(Exception e) { HistorySync.status="History import pending; check permissions and connection"; }
+        } catch(Exception e) { android.util.Log.i("RelaySync","Background sync pending: " + e.getClass().getSimpleName()); }
+    }
     private void uploadEvents(String origin,String token) throws Exception {
         JSONObject events = Vault.read(this).optJSONObject("events"); if(events==null) return;
         // One event per request keeps Unicode SMS safely below the 96 KiB API limit.
@@ -83,11 +103,19 @@ public class RelayService extends Service {
     }
     private void uploadResults(String origin,String token) throws Exception {
         JSONObject commands=Vault.read(this).optJSONObject("commands"); if(commands==null) return;
-        Iterator<String> ids=commands.keys();
+        Iterator<String> ids=commands.keys(); int reports=0;
         while(ids.hasNext()) {
             String id=ids.next(); JSONObject row=commands.getJSONObject(id); String result=row.optString("result");
             if(result.isEmpty() || result.equals(row.optString("reported"))) continue;
-            Api.post(origin,"/commands/"+id+"/result",new JSONObject().put("status",result),token);
+            if(row.optBoolean("serverRemoved")) continue;
+            if(reports++ >= 1)break;
+            try { Api.post(origin,"/commands/"+id+"/result",new JSONObject().put("status",result),token); }
+            catch(Api.Failure e) {
+                if(e.status!=404)throw e;
+                // A deleted server command must not block other SMS results or claims.
+                Vault.update(this,s->Vault.object(s,"commands").getJSONObject(id).put("serverRemoved",true));
+                continue;
+            }
             Vault.update(this,s->{ JSONObject current=Vault.object(s,"commands").optJSONObject(id); if(current!=null) current.put("reported",result); });
         }
     }
@@ -115,7 +143,7 @@ public class RelayService extends Service {
         if(!first[0]) return;
         JSONObject current=Vault.read(this);
         if(!valid || closed || !current.optBoolean("enabled") || !token.equals(current.optString("token"))
-            || System.currentTimeMillis()>=command.getLong("expiresAt") || subscription<0 || !Sims.smsReady(this)) {
+            || !timing.validSms(command.getLong("expiresAt"),SystemClock.elapsedRealtime()) || subscription<0 || !Sims.smsReady(this)) {
             Vault.update(this,s->Vault.object(s,"commands").getJSONObject(id).put("result","failed")); return;
         }
         ArrayList<PendingIntent> sent=new ArrayList<>(),delivered=new ArrayList<>();
