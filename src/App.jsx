@@ -9,6 +9,7 @@ import {
   LogOut,
   Search,
   MessageSquarePlus,
+  Plus,
   ArrowLeft,
   Send,
   Archive,
