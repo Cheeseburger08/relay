@@ -218,7 +218,7 @@ export function createStore(directory) {
         conversations,
         contacts,
         blocks:all('SELECT * FROM blocked_numbers WHERE user_id=?',user).map(r=>({id:r.id,...open(r.data),blocked:!r.deleted,phoneSynced:!!dev&&r.synced_device===dev.id&&r.synced_version===r.version})),
-        historySync:{pending:all("SELECT id FROM history_actions WHERE user_id=? AND status='pending'",user).length,failed:all("SELECT id FROM history_actions WHERE user_id=? AND status='failed'",user).length},
+        historySync:{pending:all('SELECT target_id FROM pending_history_deletes WHERE user_id=?',user).length+all("SELECT id FROM history_actions WHERE user_id=? AND status='pending'",user).length,failed:all("SELECT id FROM history_actions WHERE user_id=? AND status='failed'",user).length},
         messages: all(
           "SELECT * FROM messages WHERE user_id=? AND NOT EXISTS(SELECT 1 FROM deleted_history d WHERE d.user_id=messages.user_id AND d.kind='sms' AND d.target_id=messages.id) ORDER BY created DESC LIMIT 1000",
           user,

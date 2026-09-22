@@ -43,4 +43,22 @@ test('guarded history deletion, offline acknowledgments, phone changes and block
  assert.equal((await request('/messages',null,'DELETE')).status,204);assert.equal(store.state(user).messages.length,0);assert.equal((await sync()).data.actions.length,2);
  await history([{...row,id:'smsdb-912-3000',timestamp:3000}]);assert.equal(store.state(user).messages.length,0,'identity upgrade retains tombstone');
  await history([{...row,id:'smsdb-912-5000',timestamp:5000}]);assert.equal(store.state(user).messages.length,1,'reused Android row ID does not hide new SMS');
+ // An unlinked live SMS can be deleted before its provider record arrives.
+ const late=store.conversation(user,row.number,1),lateId=secret();
+ store.run('INSERT INTO messages VALUES(?,?,?,?,?,?)',lateId,user,late.id,store.seal({text:'Deferred fixture',sim:1,direction:'incoming',status:'received'}),9000,1);
+ assert.equal((await request('/messages/'+lateId,null,'DELETE')).status,204);
+ assert.equal((await request('/messages/'+lateId,null,'DELETE')).status,204);
+ assert.ok(!store.state(user).messages.some(m=>m.id===lateId));
+ assert.equal(store.all('SELECT * FROM pending_history_deletes WHERE target_id=?',lateId).length,1);
+ await history([{...row,id:'smsdb-950-9001',timestamp:9001,sim:1,text:'Deferred fixture'}]);
+ assert.equal(store.all('SELECT * FROM pending_history_deletes WHERE target_id=?',lateId).length,1,'similar message must not be deleted');
+ await history([{...row,id:'smsdb-951-9000',timestamp:9000,sim:1,text:'Deferred fixture'}]);
+ assert.equal(store.all('SELECT * FROM pending_history_deletes WHERE target_id=?',lateId).length,0);
+ assert.deepEqual(store.open(store.get('SELECT data FROM messages WHERE id=?',lateId).data),{deleted:true});
+ const deferred=(await sync()).data.actions.filter(a=>a.source==='smsdb-951-9000');
+ assert.equal(deferred.length,1);
+ await history([{...row,id:'smsdb-951-9000',timestamp:9000,sim:1,text:'Deferred fixture'}]);
+ assert.equal((await sync()).data.actions.filter(a=>a.source==='smsdb-951-9000').length,1,'reimport must not duplicate deletion');
+ assert.ok(!store.state(user).messages.some(m=>m.id===lateId));
+
 });

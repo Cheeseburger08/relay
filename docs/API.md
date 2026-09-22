@@ -314,3 +314,5 @@ GET `/api/voice/diagnostics` returns `{events}` with at most 100 metadata-only
 events for the signed-in account. No phone numbers, audio or message content.
 Events distinguish recovery, socket close, rate limit, backpressure, media attach
 and phone audio failures. In-memory records are reset when the service restarts.
+
+History deletion without a provider link now creates a durable pending deletion. The row disappears from browser state immediately; encrypted matching fields are retained until history import provides the exact provider identity. Import then queues the guarded phone deletion and erases the retained payload. Pending links count toward historySync.pending. Claimed/unknown outgoing SMS still require a send result before deletion.

@@ -226,6 +226,11 @@ export function registerHistory(app, store, deviceAuth) {
           fingerprint,
         );
         store.run('INSERT OR REPLACE INTO history_guards VALUES(?,?,?)',req.device.id,e.id,store.seal(historyGuard(e)));
+        if(store.get('SELECT 1 FROM pending_history_deletes WHERE user_id=? AND kind=? AND target_id=?',req.user,e.type,id)){
+          store.run('INSERT INTO history_actions(id,user_id,device_id,source_id,kind,action,data) VALUES(?,?,?,?,?,?,?)',randomUUID(),req.user,req.device.id,e.id,e.type,'delete',store.seal(historyGuard(e)));
+          store.run(`UPDATE ${table} SET data=? WHERE id=? AND user_id=?`,store.seal({deleted:true}),id,req.user);
+          store.run('DELETE FROM pending_history_deletes WHERE user_id=? AND kind=? AND target_id=?',req.user,e.type,id);
+        }
       }
     });
     res.json({ imported, matched, duplicates });

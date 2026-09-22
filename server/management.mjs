@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import {randomUUID,createHash} from 'node:crypto';
 export const managementSchema=`
+CREATE TABLE IF NOT EXISTS pending_history_deletes(user_id TEXT NOT NULL,kind TEXT NOT NULL,target_id TEXT NOT NULL,PRIMARY KEY(user_id,kind,target_id));
 CREATE TABLE IF NOT EXISTS history_guards(device_id TEXT NOT NULL,source_id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(device_id,source_id));
 CREATE TABLE IF NOT EXISTS deleted_history(user_id TEXT NOT NULL,kind TEXT NOT NULL,target_id TEXT NOT NULL,PRIMARY KEY(user_id,kind,target_id));
 CREATE TABLE IF NOT EXISTS history_actions(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,device_id TEXT NOT NULL,source_id TEXT NOT NULL,kind TEXT NOT NULL,action TEXT NOT NULL,data TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',error TEXT);
@@ -19,10 +20,16 @@ export function removeHistory(store,user,kind,id,fromPhone=false){
  if(!fromPhone){
   if(command&&['claimed','unknown'].includes(command.state))fail(409,'Wait for this message’s send result before deleting it.');
   if(link&&!guard)fail(409,'Wait for the phone to refresh this history item before deleting it.');
-  if(!link&&store.get('SELECT id FROM devices WHERE user_id=?',user)&&!(command&&['queued','cancelled','expired','failed'].includes(command.state)))fail(409,'This item is waiting for its phone history link. Try again after synchronization.');
+
  }
  store.run('INSERT INTO deleted_history VALUES(?,?,?)',user,kind,id);
  if(command?.state==='queued')store.run("UPDATE commands SET state='cancelled' WHERE id=?",command.id);
+ const awaitingLink=!fromPhone&&!link&&store.get('SELECT id FROM devices WHERE user_id=?',user)&&!(command&&['queued','cancelled','expired','failed'].includes(command.state));
+ if(awaitingLink){
+  store.run('INSERT INTO pending_history_deletes VALUES(?,?,?)',user,kind,id);
+  if(kind==='sms')store.run('UPDATE messages SET unread=0 WHERE id=?',id);
+  return; // Retain encrypted matching fields until the exact provider identity arrives.
+ }
  if(kind==='sms')store.run('UPDATE messages SET data=?,unread=0 WHERE id=?',store.seal({deleted:true}),id);
  else store.run('UPDATE calls SET data=? WHERE id=?',store.seal({deleted:true}),id);
  if(link&&!fromPhone)store.run('INSERT INTO history_actions(id,user_id,device_id,source_id,kind,action,data) VALUES(?,?,?,?,?,?,?)',randomUUID(),user,link.device_id,link.source_id,kind,'delete',guard.data);
