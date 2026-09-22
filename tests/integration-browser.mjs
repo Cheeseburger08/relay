@@ -31,7 +31,7 @@ try {
   await page.goto(origin);
   await page.getByLabel("Username", { exact: true }).fill("test-owner");
   await page
-    .getByLabel("Password Show or hide password", { exact: true })
+    .locator('input[name="password"]')
     .fill("fixture-password-only");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page
