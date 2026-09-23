@@ -2330,3 +2330,25 @@ dialog {
 .dot.sync-delayed {
   background: var(--warning);
 }
+
+/* Lists share one bounded scroll area; headings/search stay in place. */
+.main { min-height: 0; }
+.list-tools { flex-shrink: 0; }
+.list-scroll, .list-page > .rows {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
+.page-content.list-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.list-page > :not(.rows) { flex-shrink: 0; }
+.list-page > .rows {
+  flex: 1;
+  padding-bottom: 24px;
+}

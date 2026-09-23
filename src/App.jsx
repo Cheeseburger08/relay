@@ -1033,7 +1033,7 @@ export default function App() {
             </section>
           </div>
         ) : (
-          <div className="page-content">
+          <div className={"page-content" + (["Calls", "Contacts"].includes(page) ? " list-page" : "")}>
             {page === "Calls" && (
               <>
                 {!demo && (
