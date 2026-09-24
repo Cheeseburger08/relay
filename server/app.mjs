@@ -7,6 +7,9 @@ import { registerHistory } from "./history.mjs";
 import { registerManagement } from './management.mjs';
 import { registerVoice } from "./voice.mjs";
 
+const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+const SESSION_RENEW_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 const sim = z.union([z.literal(1), z.literal(2)]);
 const phone = z
   .string()
@@ -92,7 +95,7 @@ export function createApp(
     sameSite: "strict",
     secure,
     path: "/",
-    maxAge: 43200000,
+    maxAge: SESSION_DURATION_MS,
   };
   const cookieName = secure ? "__Host-relay" : "relay_session";
   function auth(req, res, next) {
@@ -119,6 +122,12 @@ export function createApp(
       } catch (e) {
         return next(e);
       }
+    }
+    // Renew at most once per day, and only after authentication/CSRF checks.
+    const renewedExpiry = Date.now() + SESSION_DURATION_MS;
+    if (session.expires < renewedExpiry - SESSION_RENEW_INTERVAL_MS) {
+      store.run("UPDATE sessions SET expires=? WHERE token=?", renewedExpiry, session.token);
+      res.cookie(cookieName, token, cookieOptions);
     }
     next();
   }
@@ -166,7 +175,7 @@ export function createApp(
       hash(token),
       user.id,
       csrf,
-      Date.now() + 43200000,
+      Date.now() + SESSION_DURATION_MS,
     );
     store.audit(user.id, "login");
     res
@@ -181,7 +190,7 @@ export function createApp(
   );
   app.post("/api/logout", auth, (req, res) => {
     store.run("DELETE FROM sessions WHERE token=?", req.session.token);
-    res.clearCookie(cookieName, cookieOptions).json({ ok: true });
+    res.clearCookie(cookieName, {httpOnly:true,sameSite:"strict",secure,path:"/"}).json({ ok: true });
   });
   app.get("/api/state", auth, (req, res) => res.json({...store.state(req.user),capabilities:app.locals.voice.available(req.user)}));
   app.post("/api/pairings", auth, (req, res) => {
@@ -787,7 +796,7 @@ export function createApp(
       store.run("DELETE FROM sessions WHERE user_id=?", req.user);
       store.audit(req.user, "password_changed");
     });
-    res.clearCookie(cookieName, cookieOptions).json({ ok: true });
+    res.clearCookie(cookieName, {httpOnly:true,sameSite:"strict",secure,path:"/"}).json({ ok: true });
   });
   app.use("/api", (_req, _res, next) =>
     next(error(404, "not_found", "Endpoint not found.")),

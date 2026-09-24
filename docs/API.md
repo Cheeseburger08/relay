@@ -46,7 +46,7 @@ All routes are relative to the Relay origin and use JSON.
 
 `POST /api/login` with `{ "username": "owner", "password": "..." }` returns
 `{ "user": { "name": "owner", "username": "owner" }, "csrf": "..." }`.
-It sets an HttpOnly, SameSite=Strict session cookie, valid for 12 hours. In
+It sets an HttpOnly, SameSite=Strict session cookie, valid for 30 days and renewed during authenticated use (at most daily). In
 HTTPS mode its name is `__Host-relay` and it has Secure set. Local development
 uses `relay_session`. Tokens are hashed in the database.
 
