@@ -30,3 +30,5 @@ Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` for Web Push. Generate your own p
 Back up runtime data before changing server code. Avoid restarting the service or reinstalling the phone app during a call. For frontend-only updates, keep old hashed assets available for browsers with an open page; replace the HTML only after uploading its new assets. Refresh outside an active call.
 
 Check `/api/health`, sign-in, phone connectivity, both SIMs, and actual two-way audio after deployment. A healthy HTTP endpoint alone does not prove that cellular calling works.
+
+For delayed background delivery, use Settings → Test background notifications, then leave Relay for 30 seconds. Compare the visible alert with the result on return. Test on every intended browser, including the iPhone Home Screen app; provider acceptance alone does not establish background delivery.

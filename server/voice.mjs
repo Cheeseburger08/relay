@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { hash } from './store.mjs';
 import webpush from 'web-push';
 import { smsNotification } from './notification-content.mjs';
+import { registerPushTests } from './push-tests.mjs';
 
 const send=(ws,value)=>{if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify(value));};
 const states=new Set(['ringing','dialing','active','held','ended']);
@@ -51,6 +52,10 @@ export function registerVoice(app,store,{auth,origin,secure,reconnectGraceMs=REC
     const contact=sms.number&&store.get('SELECT data FROM contacts WHERE user_id=? AND number_key=? AND deleted=0',user,store.numberKey(sms.number));
     return push(user,smsNotification(sms,contact?store.open(contact.data).name:null),3600);
   };
+  const pushTests=registerPushTests(app,store,{auth,origin,onStatus:trace,send:async(row,payload)=>{
+    if(!pushReady)throw Error('Push unavailable');
+    await webpush.sendNotification(store.open(row.data),JSON.stringify(payload),{TTL:300,urgency:'high',timeout:10000,vapidDetails:{subject:origin,publicKey,privateKey}});
+  }});
   app.get('/api/voice',auth,(req,res)=>res.json({...view(req.user),pushKey:pushReady?publicKey:null}));
   app.get('/api/voice/diagnostics',auth,(req,res)=>res.json({events:diagnostics.get(req.user)||[]}));
   app.post('/api/voice/push',auth,(req,res)=>{
@@ -67,10 +72,12 @@ export function registerVoice(app,store,{auth,origin,secure,reconnectGraceMs=REC
   });
   app.post('/api/voice/push/status',auth,(req,res)=>{
     const endpoint=req.body?.endpoint;
-    res.json({enabled:typeof endpoint==='string'&&!!store.get('SELECT id FROM push_subscriptions WHERE id=? AND user_id=?',hash(endpoint),req.user)});
+    const id=typeof endpoint==='string'?hash(endpoint):'';
+    res.json({enabled:!!id&&!!store.get('SELECT id FROM push_subscriptions WHERE id=? AND user_id=?',id,req.user),test:pushTests.status(req.user,id)});
   });
   app.delete('/api/voice/push',auth,(req,res)=>{
     if(typeof req.body?.endpoint!=='string')return res.sendStatus(400);
+    pushTests.cancel(req.user,hash(req.body.endpoint));
     store.run('DELETE FROM push_subscriptions WHERE id=? AND user_id=?',hash(req.body.endpoint),req.user);res.sendStatus(204);
   });
   const wss=new WebSocketServer({noServer:true,maxPayload:4096,perMessageDeflate:false});
@@ -215,5 +222,5 @@ export function registerVoice(app,store,{auth,origin,secure,reconnectGraceMs=REC
     for(const [user,at] of pending)if(Date.now()-at>15000){pending.delete(user);phones.get(user)?.close(1011,'Call state timeout');}
     for(const [id,r] of acknowledgments)if(Date.now()-r.issuedAt>11000){acknowledgments.delete(id);for(const b of browsers.get(r.user)||[])send(b,{type:'error',message:'The phone did not confirm the call command. Check its connection before trying again.'});send(phones.get(r.user),{type:'sync'});}
   },healthIntervalMs);mediaHealth.unref();
-  return {attach,notifySms,dataChanged,available:user=>({liveCalls:phones.has(user),push:pushReady}),close(){clearInterval(heartbeat);clearInterval(mediaHealth);for(const ws of wss.clients)ws.terminate();wss.close();}};
+  return {attach,notifySms,dataChanged,available:user=>({liveCalls:phones.has(user),push:pushReady}),close(){pushTests.close();clearInterval(heartbeat);clearInterval(mediaHealth);for(const ws of wss.clients)ws.terminate();wss.close();}};
 }

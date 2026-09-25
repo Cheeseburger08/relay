@@ -167,9 +167,39 @@ export class VoiceClient {
       if(!subscription){this.update({pushEnabled:false,pushStatus:blocked||(!('Notification'in window)?'Push is unavailable here. On iPhone, open Relay from the Home Screen.':'Notifications disabled on this browser.')});return;}
       const r=await fetch('/api/voice/push/status',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':this.csrf},body:JSON.stringify({endpoint:subscription.endpoint})});
       if(!r.ok)throw Error('Could not check notification settings. Please retry.');
-      const {enabled}=await r.json();
-      if(current())this.update({pushEnabled:enabled,pushStatus:blocked||(enabled&&permission!=='granted'?'Notification permission is not granted in this browser. Allow it in your browser settings.':enabled?'Call and SMS notifications enabled on this browser.':'Notifications disabled on this browser.')});
+      const {enabled,test}=await r.json();
+      if(current())this.update({pushTest:test||null,pushEnabled:enabled,pushStatus:blocked||(enabled&&permission!=='granted'?'Notification permission is not granted in this browser. Allow it in your browser settings.':enabled?'Call and SMS notifications enabled on this browser.':'Notifications disabled on this browser.')});
     }catch{if(current())this.update({pushStatus:blocked||'Could not check notification settings. Please retry.'});}
+  }
+  async testNotifications(){
+    this.update({pushTestBusy:true,pushTestError:''});
+    try{
+      const registration=await navigator.serviceWorker?.getRegistration('/');
+      await registration?.update();
+      const installing=registration?.installing||registration?.waiting;
+      if(installing&&installing.state!=='activated')await new Promise((resolve,reject)=>{
+        const finish=error=>{clearTimeout(timer);installing.removeEventListener('statechange',changed);error?reject(error):resolve();};
+        const changed=()=>{if(installing.state==='activated')finish();else if(installing.state==='redundant')finish(Error('Notification update failed. Refresh and try again.'));};
+        const timer=setTimeout(()=>finish(Error('Notification update is still activating. Refresh and try again.')),10000);
+        installing.addEventListener('statechange',changed);changed();
+      });
+      await new Promise((resolve,reject)=>{
+        const channel=new MessageChannel();
+        const finish=error=>{clearTimeout(timer);channel.port1.close();channel.port2.close();error?reject(error):resolve();};
+        const timer=setTimeout(()=>finish(Error('Refresh Relay once to load the notification test update.')),5000);
+        channel.port1.onmessage=event=>finish(event.data?.testReceipts===true?null:Error('Refresh Relay to update notifications.'));
+        if(!registration?.active){finish(Error('Enable notifications first.'));return;}
+        registration.active.postMessage({type:'relay-push-capabilities'},[channel.port2]);
+      });
+      const subscription=await registration?.pushManager.getSubscription();
+      if(!subscription)throw Error('Enable notifications on this browser first.');
+      const r=await fetch('/api/voice/push/test',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':this.csrf},body:JSON.stringify({endpoint:subscription.endpoint})});
+      const result=await r.json();
+      if(!r.ok)throw Error(result.error?.message||'Could not schedule the notification test.');
+      this.update({pushTest:result.test});
+      clearTimeout(this.pushTestTimer);
+      this.pushTestTimer=setTimeout(()=>this.notificationStatus(),15000);
+    }catch(e){this.update({pushTestError:e.message});}finally{this.update({pushTestBusy:false});}
   }
   async disableNotifications(){
     this.notificationCheck=(this.notificationCheck||0)+1;
@@ -202,5 +232,5 @@ export class VoiceClient {
     }catch(e){this.update({pushStatus:e.message});}finally{this.update({pushBusy:false});}
   }
   disconnect(){clearTimeout(this.reconnect);this.clearRecovery();const ws=this.ws;this.ws=null;this.stopAudio();this.ringtone(false);ws?.close();}
-  dispose(){this.closed=true;this.disconnect();this.ringContext?.close().catch(()=>{});window.removeEventListener('pagehide',this.onPageHide);window.removeEventListener('pageshow',this.onPageShow);globalThis.document?.removeEventListener('visibilitychange',this.onVisibility);}
+  dispose(){clearTimeout(this.pushTestTimer);this.closed=true;this.disconnect();this.ringContext?.close().catch(()=>{});window.removeEventListener('pagehide',this.onPageHide);window.removeEventListener('pageshow',this.onPageShow);globalThis.document?.removeEventListener('visibilitychange',this.onVisibility);}
 }

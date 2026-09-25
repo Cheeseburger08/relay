@@ -173,7 +173,7 @@ export default function App() {
   const [page, setPage] = useState(
       new URLSearchParams(location.search).get("view") === "calls"
         ? "Calls"
-        : "Messages",
+        : new URLSearchParams(location.search).get("view") === "settings" ? "Settings" : "Messages",
     ),
     [selected, setSelected] = useState(new URLSearchParams(location.search).get("conversation")),
     [filter, setFilter] = useState("All"),
@@ -1433,6 +1433,23 @@ export default function App() {
                   >
                     <Bell size={17} />
                     {voice.pushBusy ? "Updating…" : voice.pushEnabled ? "Disable" : "Enable"}
+                  </button>
+                </div>
+                <div className="settings-row">
+                  <div>
+                    <h3>Test background notifications</h3>
+                    <p role="status">{voice.pushTestError || (
+                      voice.pushTest?.state === "scheduled" ? "Test scheduled in 10 seconds. Go to your Home Screen now and leave Relay closed for 30 seconds." :
+                      voice.pushTest?.state === "sending" ? "Sending the test…" :
+                      voice.pushTest?.state === "accepted" ? "Test sent. This browser has not confirmed receiving it yet." :
+                      voice.pushTest?.state === "displayed" ? `Browser confirmed the test after ${Math.max(0,Math.round((voice.pushTest.displayedAt-voice.pushTest.sentAt)/1000))} seconds. If you saw no alert, check the phone’s notification settings.` :
+                      voice.pushTest?.state === "failed" ? voice.pushTest.error :
+                      voice.pushTest?.state === "cancelled" ? "Test cancelled." :
+                      "Send a test to this browser in 10 seconds, then go to your Home Screen. No SMS is sent."
+                    )}</p>
+                  </div>
+                  <button className="secondary" disabled={demo || !voice.pushEnabled || voice.pushBusy || voice.pushTestBusy} onClick={()=>voiceClient.current?.testNotifications()}>
+                    <Bell size={17} />{voice.pushTestBusy ? "Scheduling…" : "Test"}
                   </button>
                 </div>
                 <div className="settings-row">
