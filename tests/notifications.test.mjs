@@ -16,6 +16,10 @@ test('SMS and call push notifications route safely to their destination',async()
  assert.equal(navigation,'https://relay.example/?view=messages&conversation=synthetic-conversation');assert.ok(focused);
  await dispatch('push',{data:{json:()=>({type:'call',body:'Ringing'})}});
  assert.equal(shown[1].data.url,'/?view=calls');
+ for(const notification of shown){
+  assert.match(notification.icon,/^data:image\/png;base64,/, 'notification display must not fetch its icon over the network');
+  assert.deepEqual(Buffer.from(notification.icon.split(',')[1],'base64'),readFileSync('public/icon-192.png'));
+ }
  await dispatch('notificationclick',{notification:{data:{url:'https://evil.example'},close(){}}});
  assert.equal(navigation,'https://relay.example');
 });
