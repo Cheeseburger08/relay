@@ -26,6 +26,7 @@ export function registerHistory(app, store, deviceAuth) {
         .enum(["received", "sent", "failed", "draft", "pending"])
         .optional(),
       read: z.boolean().optional(),
+      live: z.boolean().optional(),
       duration: z.number().int().min(0).max(86400).optional(),
     })
     .strict()
@@ -42,6 +43,7 @@ export function registerHistory(app, store, deviceAuth) {
       .object({ records: z.array(record).min(1).max(25) })
       .strict()
       .parse(req.body);
+    const notifications=[];
     let imported = 0,
       matched = 0,
       duplicates = 0;
@@ -216,6 +218,7 @@ export function registerHistory(app, store, deviceAuth) {
               e.timestamp,
             );
           imported++;
+          if(e.type === "sms" && e.direction === "incoming" && e.live === true && !e.read) notifications.push({conversationId:store.get("SELECT conversation_id FROM messages WHERE id=?",id).conversation_id,sim:e.sim});
         }
         store.run(
           "INSERT INTO history_links VALUES(?,?,?,?,?)",
@@ -233,6 +236,8 @@ export function registerHistory(app, store, deviceAuth) {
         }
       }
     });
+    if(imported || matched) app.locals.voice.dataChanged(req.user);
+    for(const sms of notifications) void app.locals.voice.notifySms(req.user,sms).catch(()=>{});
     res.json({ imported, matched, duplicates });
   });
 }

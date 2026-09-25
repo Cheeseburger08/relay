@@ -27,8 +27,9 @@ public class RelayService extends Service {
         startForeground(1, new Notification.Builder(this,"relay").setContentTitle("Relay is active")
             .setContentText("Phone relay enabled. Tap for call controls or to pause.").setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentIntent(open).setOngoing(true).build());
-        worker = Executors.newScheduledThreadPool(3);
+        worker = Executors.newScheduledThreadPool(4);
         worker.scheduleWithFixedDelay(this::tick,0,3,TimeUnit.SECONDS);
+        worker.scheduleWithFixedDelay(this::recentSmsTick,0,1,TimeUnit.SECONDS);
         worker.scheduleWithFixedDelay(this::eventTick,1,3,TimeUnit.SECONDS);
         worker.scheduleWithFixedDelay(this::maintenanceTick,2,20,TimeUnit.SECONDS);
     }
@@ -75,6 +76,10 @@ public class RelayService extends Service {
         if(closed) return null;
         JSONObject s=Vault.read(this);
         return s.optBoolean("enabled") && s.has("token") ? s : null;
+    }
+    private void recentSmsTick() {
+        try {JSONObject s=enabledSettings();if(s!=null)HistorySync.recentSms(this,s.getString("origin"),s.getString("token"));}
+        catch(Exception e){android.util.Log.i("RelaySync","Recent SMS sync pending: "+e.getClass().getSimpleName());}
     }
     private void eventTick() {
         try { JSONObject s=enabledSettings();if(s!=null)uploadEvents(s.getString("origin"),s.getString("token")); }

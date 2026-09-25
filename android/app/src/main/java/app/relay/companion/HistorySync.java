@@ -30,13 +30,22 @@ final class HistorySync {
     private static boolean seen(Context c,JSONObject row) throws Exception {
         JSONObject seen=Vault.read(c).optJSONObject("historySeenV3");return seen!=null && signature(row).equals(seen.optString(row.getString("id")));
     }
-    private static void upload(Context c,String origin,String token,JSONObject row) throws Exception {
-        Api.post(origin,"/history",new JSONObject().put("records",new JSONArray().put(row)),token);
+    private static synchronized void upload(Context c,String origin,String token,JSONObject row) throws Exception {
+        if(seen(c,row))return;
+        JSONObject transmitted=new JSONObject(row.toString());
+        long since=Vault.read(c).optLong("smsLiveSince",0),date=row.optLong("timestamp"),now=System.currentTimeMillis();
+        if("sms".equals(row.optString("type")) && "incoming".equals(row.optString("direction")) && since>0 && date>=since && date>=now-120000 && date<=now+10000)transmitted.put("live",true);
+        Api.post(origin,"/history",new JSONObject().put("records",new JSONArray().put(transmitted)),token);
         Vault.update(c,s->Vault.object(s,"historySeenV3").put(row.getString("id"),signature(row)));
     }
-    private static int sms(Context c,String origin,String token) throws Exception {
+    static int recentSms(Context c,String origin,String token) throws Exception {
+        if(!Sims.permission(c,Manifest.permission.READ_SMS))return 0;
+        return sms(c,origin,token,true);
+    }
+    private static int sms(Context c,String origin,String token) throws Exception { return sms(c,origin,token,false); }
+    private static int sms(Context c,String origin,String token,boolean recent) throws Exception {
         String[] projection={"_id","address","date","date_sent","type","body","read","sub_id"};int count=0;
-        try(Cursor r=c.getContentResolver().query(Telephony.Sms.CONTENT_URI,projection,null,null,"date ASC, _id ASC")) {
+        try(Cursor r=c.getContentResolver().query(Telephony.Sms.CONTENT_URI,projection,recent?"date>=?":null,recent?new String[]{Long.toString(System.currentTimeMillis()-120000)}:null,recent?"date DESC, _id DESC":"date ASC, _id ASC")) {
             while(r!=null && r.moveToNext() && count<50) {
                 long date=Math.max(0,r.getLong(2));String id="smsdb-"+r.getLong(0)+"-"+date;
                 int type=r.getInt(4); if(type<1 || type>6) continue;
@@ -69,3 +78,4 @@ final class HistorySync {
         }return count;
     }
 }
+

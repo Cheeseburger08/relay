@@ -292,10 +292,12 @@ export default function App() {
     sync();
     const id = setInterval(sync, 5000);
     document.addEventListener("visibilitychange", sync);
+    window.addEventListener("relay-data-changed", sync);
     return () => {
       alive = false;
       clearInterval(id);
       document.removeEventListener("visibilitychange", sync);
+      window.removeEventListener("relay-data-changed", sync);
     };
   }, [session, demo]);
   useEffect(() => {
@@ -1426,11 +1428,11 @@ export default function App() {
                   </div>
                   <button
                     className="secondary"
-                    disabled={demo}
-                    onClick={() => voiceClient.current?.enableNotifications()}
+                    disabled={demo || voice.pushBusy}
+                    onClick={() => voice.pushEnabled ? voiceClient.current?.disableNotifications() : voiceClient.current?.enableNotifications()}
                   >
                     <Bell size={17} />
-                    Enable
+                    {voice.pushBusy ? "Updating…" : voice.pushEnabled ? "Disable" : "Enable"}
                   </button>
                 </div>
                 <div className="settings-row">

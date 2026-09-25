@@ -10,7 +10,8 @@ public class SmsReceiver extends BroadcastReceiver {
         try {
             JSONObject s = Vault.read(c); if (!s.optBoolean("enabled") || !s.has("token")) return;
             if(Sims.permission(c,android.Manifest.permission.READ_SMS)) {
-                // The provider supplies a stable row ID for both live and old SMS.
+                // Persist the live arrival window; provider IDs still drive deduplication.
+                Vault.update(c,state->state.put("smsLiveSince",System.currentTimeMillis()-10000));
                 c.startForegroundService(new Intent(c,RelayService.class)); return;
             }
             int slot = Sims.slot(c, i.getIntExtra("subscription", -1));

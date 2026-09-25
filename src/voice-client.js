@@ -6,7 +6,7 @@ export class VoiceClient {
     this.onPageHide=()=>this.disconnect();window.addEventListener('pagehide',this.onPageHide);
     this.onPageShow=()=>{if(!this.closed&&!this.ws)this.connect();};window.addEventListener('pageshow',this.onPageShow);
     this.connect();
-    fetch('/api/voice').then(r=>r.ok?r.json():null).then(v=>{if(v)this.pushKey=v.pushKey;}).catch(()=>{});
+    fetch('/api/voice').then(r=>r.ok?r.json():null).then(v=>{if(v){this.pushKey=v.pushKey;this.notificationStatus();}}).catch(()=>{});
   }
   update(value){this.state={...this.state,...value};if(!this.closed)this.changed(this.state);}
   send(value){if(this.ws?.readyState!==WebSocket.OPEN)throw Error('Call connection is offline.');this.ws.send(JSON.stringify(value));}
@@ -45,6 +45,7 @@ export class VoiceClient {
         return;
       }
       const msg=JSON.parse(data);
+      if(msg.type==='data_changed')window.dispatchEvent(new Event("relay-data-changed"));
       if(msg.type==='state'){
         const old=this.state.call,c=!msg.online&&!msg.call&&this.wantAudio?old:msg.call;
         if(this.audio?.attached&&(!msg.claimed||!msg.online||c?.state!=='active'))this.pauseAudio();
@@ -149,7 +150,31 @@ export class VoiceClient {
     catch(e){if(this.audio===a&&e.name!=='NotAllowedError')this.update({outputError:'Audio output selection is unavailable. Use your device’s audio controls.'});}
   }
   ringtone(enabled){clearInterval(this.ringTimer);if(!enabled||this.ringContext?.state!=='running')return;this.ringTimer=setInterval(()=>{const o=this.ringContext.createOscillator(),g=this.ringContext.createGain();o.frequency.value=660;g.gain.value=.025;o.connect(g).connect(this.ringContext.destination);o.start();o.stop(this.ringContext.currentTime+.18);},1400);}
+  async notificationStatus(){
+    try{
+      const registration=await navigator.serviceWorker?.getRegistration('/');
+      const subscription=await registration?.pushManager.getSubscription();
+      if(!subscription){this.update({pushEnabled:false});return;}
+      const r=await fetch('/api/voice/push/status',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':this.csrf},body:JSON.stringify({endpoint:subscription.endpoint})});
+      if(r.ok){const {enabled}=await r.json();this.update({pushEnabled:enabled,pushStatus:enabled?'Call and SMS notifications enabled on this browser.':'Notifications disabled on this browser.'});}
+    }catch{}
+  }
+  async disableNotifications(){
+    this.update({pushBusy:true});
+    try{
+      const registration=await navigator.serviceWorker?.getRegistration('/');
+      const subscription=await registration?.pushManager.getSubscription();
+      if(subscription){
+        const r=await fetch('/api/voice/push',{method:'DELETE',headers:{'Content-Type':'application/json','X-CSRF-Token':this.csrf},body:JSON.stringify({endpoint:subscription.endpoint})});
+        if(!r.ok)throw Error('Could not disable notifications. Please retry.');
+        await subscription.unsubscribe();
+      }
+      this.ringtone(false);await this.ringContext?.suspend();
+      this.update({pushEnabled:false,pushStatus:'Notifications disabled on this browser.'});
+    }catch(e){this.update({pushStatus:e.message});}finally{this.update({pushBusy:false});}
+  }
   async enableNotifications(){
+    this.update({pushBusy:true});
     try{
       this.ringContext??=new AudioContext();await this.ringContext.resume();
       if(!('PushManager'in window)||!('Notification'in window)||!this.pushKey)throw Error('Push is unavailable here. On iPhone, open Relay from the Home Screen.');
@@ -159,8 +184,8 @@ export class VoiceClient {
       const subscription=await registration.pushManager.getSubscription()||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:key});
       const r=await fetch('/api/voice/push',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':this.csrf},body:JSON.stringify(subscription)});
       if(!r.ok)throw Error('Notification subscription could not be saved.');
-      this.update({pushStatus:'Call and SMS notifications enabled.'});
-    }catch(e){this.update({pushStatus:e.message});}
+      this.update({pushEnabled:true,pushStatus:'Call and SMS notifications enabled on this browser.'});
+    }catch(e){this.update({pushStatus:e.message});}finally{this.update({pushBusy:false});}
   }
   disconnect(){clearTimeout(this.reconnect);this.clearRecovery();const ws=this.ws;this.ws=null;this.stopAudio();this.ringtone(false);ws?.close();}
   dispose(){this.closed=true;this.disconnect();this.ringContext?.close().catch(()=>{});window.removeEventListener('pagehide',this.onPageHide);window.removeEventListener('pageshow',this.onPageShow);}

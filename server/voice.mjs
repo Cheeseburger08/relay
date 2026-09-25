@@ -35,12 +35,13 @@ export function registerVoice(app,store,{auth,origin,secure,reconnectGraceMs=REC
     owners.delete(user);broadcast(user);
     for(const b of browsers.get(user)||[])send(b,{type:'recovering',message:reason,remainingMs:Math.max(0,recovery.deadline-Date.now())});
   }
+  const dataChanged=user=>{for(const ws of browsers.get(user)||[])send(ws,{type:"data_changed"});};
   async function push(user,payload,ttl=30) {
     if(!pushReady)return;
-    for(const row of store.all('SELECT * FROM push_subscriptions WHERE user_id=?',user)) {
-      try { await webpush.sendNotification(store.open(row.data),JSON.stringify(payload),{TTL:ttl,urgency:'high',timeout:10000,vapidDetails:{subject:origin,publicKey,privateKey}}); }
-      catch(e){if([404,410].includes(e.statusCode))store.run('DELETE FROM push_subscriptions WHERE id=?',row.id);}
-    }
+    await Promise.all(store.all('SELECT * FROM push_subscriptions WHERE user_id=?',user).map(async row=> {
+      try { await webpush.sendNotification(store.open(row.data),JSON.stringify(payload),{TTL:ttl,urgency:'high',timeout:10000,vapidDetails:{subject:origin,publicKey,privateKey}}); trace(user,"push_accepted",{kind:payload.type||"call"}); }
+      catch(e){trace(user,'push_failed',{kind:payload.type||'call',status:e.statusCode||null});if([404,410].includes(e.statusCode))store.run('DELETE FROM push_subscriptions WHERE id=?',row.id);}
+    }));
   }
   const notify=(user,call)=>push(user,{type:'call',body:`SIM ${call.sim||'unknown'} is ringing. Open Relay to answer.`,callId:call.id});
   const notifySms=(user,sms)=>push(user,{type:'sms',body:`New message on SIM ${sms.sim}. Open Relay to read it.`,conversationId:sms.conversationId},3600);
@@ -57,6 +58,14 @@ export function registerVoice(app,store,{auth,origin,secure,reconnectGraceMs=REC
     if(existing&&existing.user_id!==req.user)return res.sendStatus(409);
     if(!existing&&store.all('SELECT id FROM push_subscriptions WHERE user_id=?',req.user).length>=10)return res.sendStatus(429);
     store.run('INSERT INTO push_subscriptions(id,user_id,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',id,req.user,store.seal({endpoint:s.endpoint,keys:s.keys}));res.sendStatus(204);
+  });
+  app.post('/api/voice/push/status',auth,(req,res)=>{
+    const endpoint=req.body?.endpoint;
+    res.json({enabled:typeof endpoint==='string'&&!!store.get('SELECT id FROM push_subscriptions WHERE id=? AND user_id=?',hash(endpoint),req.user)});
+  });
+  app.delete('/api/voice/push',auth,(req,res)=>{
+    if(typeof req.body?.endpoint!=='string')return res.sendStatus(400);
+    store.run('DELETE FROM push_subscriptions WHERE id=? AND user_id=?',hash(req.body.endpoint),req.user);res.sendStatus(204);
   });
   const wss=new WebSocketServer({noServer:true,maxPayload:4096,perMessageDeflate:false});
   function browserAuth(req){const name=secure?'__Host-relay':'relay_session';const token=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(name+'='))?.slice(name.length+1);return token?store.get('SELECT * FROM sessions WHERE token=? AND expires>?',hash(token),Date.now()):null;}
@@ -200,5 +209,5 @@ export function registerVoice(app,store,{auth,origin,secure,reconnectGraceMs=REC
     for(const [user,at] of pending)if(Date.now()-at>15000){pending.delete(user);phones.get(user)?.close(1011,'Call state timeout');}
     for(const [id,r] of acknowledgments)if(Date.now()-r.issuedAt>11000){acknowledgments.delete(id);for(const b of browsers.get(r.user)||[])send(b,{type:'error',message:'The phone did not confirm the call command. Check its connection before trying again.'});send(phones.get(r.user),{type:'sync'});}
   },healthIntervalMs);mediaHealth.unref();
-  return {attach,notifySms,available:user=>({liveCalls:phones.has(user),push:pushReady}),close(){clearInterval(heartbeat);clearInterval(mediaHealth);for(const ws of wss.clients)ws.terminate();wss.close();}};
+  return {attach,notifySms,dataChanged,available:user=>({liveCalls:phones.has(user),push:pushReady}),close(){clearInterval(heartbeat);clearInterval(mediaHealth);for(const ws of wss.clients)ws.terminate();wss.close();}};
 }

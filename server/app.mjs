@@ -557,6 +557,7 @@ export function createApp(
       }
       return accepted;
     });
+    if(count) app.locals.voice.dataChanged(req.user);
     for(const sms of notifications) void app.locals.voice.notifySms(req.user,sms).catch(()=>{});
     res.json({ accepted: count, duplicates: events.length - count });
   });

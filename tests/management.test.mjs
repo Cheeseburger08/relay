@@ -61,4 +61,20 @@ test('guarded history deletion, offline acknowledgments, phone changes and block
  assert.equal((await sync()).data.actions.filter(a=>a.source==='smsdb-951-9000').length,1,'reimport must not duplicate deletion');
  assert.ok(!store.state(user).messages.some(m=>m.id===lateId));
 
+ const alerts=[];let refreshes=0;
+ app.locals.voice.notifySms=async(user,sms)=>alerts.push({user,...sms});
+ app.locals.voice.dataChanged=()=>refreshes++;
+ const liveRow={...row,id:'smsdb-960-12000',timestamp:12000,live:true,text:'Live fixture'};
+ await history([liveRow]);await history([liveRow]);
+ await history([{...row,id:'smsdb-961-13000',timestamp:13000,text:'Old fixture'}]);
+ await history([{...row,id:'smsdb-962-14000',timestamp:14000,live:true,direction:'outgoing',status:'sent'}]);
+ assert.equal(alerts.length,1,'only new live incoming history triggers push');
+ assert.equal(alerts[0].user,user);assert.ok(alerts[0].conversationId);
+ assert.equal(refreshes,3,'imports signal immediate browser refresh, retries do not');
+ const subscription={endpoint:'https://fcm.googleapis.com/fake-synthetic',keys:{p256dh:'a'.repeat(90),auth:'b'.repeat(22)}};
+ assert.equal((await request('/voice/push',subscription)).status,204);
+ assert.equal((await request('/voice/push/status',{endpoint:subscription.endpoint})).data.enabled,true);
+ assert.equal((await request('/voice/push',{endpoint:subscription.endpoint},'DELETE')).status,204);
+ assert.equal((await request('/voice/push/status',{endpoint:subscription.endpoint})).data.enabled,false);
+
 });
