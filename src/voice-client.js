@@ -4,7 +4,8 @@ export class VoiceClient {
     this.csrf=csrf;this.changed=changed;this.state={online:false,call:null,claimed:false,message:'',busy:false,muted:false,mic:0,caller:0,pushStatus:''};
     this.closed=false;this.audio=null;this.wantAudio=false;this.clientId=crypto.randomUUID();
     this.onPageHide=()=>this.disconnect();window.addEventListener('pagehide',this.onPageHide);
-    this.onPageShow=()=>{if(!this.closed&&!this.ws)this.connect();};window.addEventListener('pageshow',this.onPageShow);
+    this.onPageShow=()=>{if(this.closed)return;if(!this.ws)this.connect();this.notificationStatus();};window.addEventListener('pageshow',this.onPageShow);
+    this.onVisibility=()=>{if(globalThis.document?.visibilityState==='visible')this.notificationStatus();};globalThis.document?.addEventListener('visibilitychange',this.onVisibility);
     this.connect();
     fetch('/api/voice').then(r=>r.ok?r.json():null).then(v=>{if(v){this.pushKey=v.pushKey;this.notificationStatus();}}).catch(()=>{});
   }
@@ -151,15 +152,27 @@ export class VoiceClient {
   }
   ringtone(enabled){clearInterval(this.ringTimer);if(!enabled||this.ringContext?.state!=='running')return;this.ringTimer=setInterval(()=>{const o=this.ringContext.createOscillator(),g=this.ringContext.createGain();o.frequency.value=660;g.gain.value=.025;o.connect(g).connect(this.ringContext.destination);o.start();o.stop(this.ringContext.currentTime+.18);},1400);}
   async notificationStatus(){
+    if(this.closed||this.state.pushBusy)return;
+    const check=this.notificationCheck=(this.notificationCheck||0)+1;
+    const current=()=>!this.closed&&!this.state.pushBusy&&this.notificationCheck===check;
+    const permission=window.Notification?.permission;
+    const blocked=permission==='denied'?'Notifications are blocked in this browser. Allow them in your browser settings.':null;
     try{
       const registration=await navigator.serviceWorker?.getRegistration('/');
-      const subscription=await registration?.pushManager.getSubscription();
-      if(!subscription){this.update({pushEnabled:false});return;}
+      if(!current())return;
+      // Refresh the installed worker without changing this browser's opt-in.
+      registration?.update?.().catch(()=>{});
+      const subscription=await registration?.pushManager?.getSubscription();
+      if(!current())return;
+      if(!subscription){this.update({pushEnabled:false,pushStatus:blocked||(!('Notification'in window)?'Push is unavailable here. On iPhone, open Relay from the Home Screen.':'Notifications disabled on this browser.')});return;}
       const r=await fetch('/api/voice/push/status',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':this.csrf},body:JSON.stringify({endpoint:subscription.endpoint})});
-      if(r.ok){const {enabled}=await r.json();this.update({pushEnabled:enabled,pushStatus:enabled?'Call and SMS notifications enabled on this browser.':'Notifications disabled on this browser.'});}
-    }catch{}
+      if(!r.ok)throw Error('Could not check notification settings. Please retry.');
+      const {enabled}=await r.json();
+      if(current())this.update({pushEnabled:enabled,pushStatus:blocked||(enabled&&permission!=='granted'?'Notification permission is not granted in this browser. Allow it in your browser settings.':enabled?'Call and SMS notifications enabled on this browser.':'Notifications disabled on this browser.')});
+    }catch{if(current())this.update({pushStatus:blocked||'Could not check notification settings. Please retry.'});}
   }
   async disableNotifications(){
+    this.notificationCheck=(this.notificationCheck||0)+1;
     this.update({pushBusy:true});
     try{
       const registration=await navigator.serviceWorker?.getRegistration('/');
@@ -174,6 +187,7 @@ export class VoiceClient {
     }catch(e){this.update({pushStatus:e.message});}finally{this.update({pushBusy:false});}
   }
   async enableNotifications(){
+    this.notificationCheck=(this.notificationCheck||0)+1;
     this.update({pushBusy:true});
     try{
       this.ringContext??=new AudioContext();await this.ringContext.resume();
@@ -188,5 +202,5 @@ export class VoiceClient {
     }catch(e){this.update({pushStatus:e.message});}finally{this.update({pushBusy:false});}
   }
   disconnect(){clearTimeout(this.reconnect);this.clearRecovery();const ws=this.ws;this.ws=null;this.stopAudio();this.ringtone(false);ws?.close();}
-  dispose(){this.closed=true;this.disconnect();this.ringContext?.close().catch(()=>{});window.removeEventListener('pagehide',this.onPageHide);window.removeEventListener('pageshow',this.onPageShow);}
+  dispose(){this.closed=true;this.disconnect();this.ringContext?.close().catch(()=>{});window.removeEventListener('pagehide',this.onPageHide);window.removeEventListener('pageshow',this.onPageShow);globalThis.document?.removeEventListener('visibilitychange',this.onVisibility);}
 }

@@ -70,6 +70,7 @@ test('guarded history deletion, offline acknowledgments, phone changes and block
  await history([{...row,id:'smsdb-962-14000',timestamp:14000,live:true,direction:'outgoing',status:'sent'}]);
  assert.equal(alerts.length,1,'only new live incoming history triggers push');
  assert.equal(alerts[0].user,user);assert.ok(alerts[0].conversationId);
+ assert.equal(alerts[0].text,liveRow.text);assert.equal(alerts[0].number,liveRow.number);
  assert.equal(refreshes,3,'imports signal immediate browser refresh, retries do not');
  const subscription={endpoint:'https://fcm.googleapis.com/fake-synthetic',keys:{p256dh:'a'.repeat(90),auth:'b'.repeat(22)}};
  assert.equal((await request('/voice/push',subscription)).status,204);

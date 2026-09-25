@@ -270,7 +270,8 @@ test("private phone API contract", async (t) => {
       assert.equal(alerts.length,1,"only new incoming SMS alerts, not duplicates or calls");
       assert.equal(alerts[0].user,owner);
       assert.ok(alerts[0].conversationId);
-      assert.equal(alerts[0].text,undefined);
+      assert.equal(alerts[0].text,sms.text);
+      assert.equal(alerts[0].number,sms.number);
       assert.equal(
         (
           await request("/conversations/" + d.conversations[0].id, {

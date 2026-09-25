@@ -525,7 +525,7 @@ export function createApp(
         );
         if (e.type === "sms") {
           const c = store.conversation(req.user, e.number, e.sim);
-          if(e.direction === "incoming") notifications.push({conversationId:c.id,sim:e.sim});
+          if(e.direction === "incoming") notifications.push({conversationId:c.id,sim:e.sim,number:e.number,text:e.text});
           store.run(
             "INSERT INTO messages VALUES(?,?,?,?,?,?)",
             randomUUID(),

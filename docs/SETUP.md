@@ -23,7 +23,7 @@ Include a nonstandard port in `PUBLIC_ORIGIN` if one is used. Configure certific
 
 ## Browser notifications
 
-Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` for Web Push. Generate your own pair, for example with the installed `web-push` CLI (`npx web-push generate-vapid-keys`). Keep the private key out of Git and logs. Notification delivery depends on browser support, permission, and OS background restrictions. On iPhone, test the Home Screen app flow.
+Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` for Web Push. Generate your own pair, for example with the installed `web-push` CLI (`npx web-push generate-vapid-keys`). Keep the private key out of Git and logs. Notification delivery depends on browser support, permission, and OS background restrictions. On iPhone, test the Home Screen app flow. SMS alerts display the sender and message preview. Enable or disable notifications per browser in Settings.
 
 ## Updates
 

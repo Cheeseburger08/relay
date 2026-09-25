@@ -5,7 +5,7 @@ self.addEventListener('push',event=>{
   const sms=data.type==='sms';
   const conversation=typeof data.conversationId==='string'&&/^[\w-]{8,80}$/.test(data.conversationId)?data.conversationId:null;
   const url=sms?'/?view=messages'+(conversation?'&conversation='+encodeURIComponent(conversation):''):'/?view=calls';
-  event.waitUntil(self.registration.showNotification(sms?'New Relay message':'Incoming Relay call',{
+  event.waitUntil(self.registration.showNotification(sms?(typeof data.title==='string'?data.title.slice(0,160):'New Relay message'):'Incoming Relay call',{
     body:typeof data.body==='string'?data.body:'Open Relay to check the call.',
     icon:'/icon-192.png',tag:sms?'relay-sms-'+(conversation||'inbox'):'relay-call',renotify:true,
     data:{url},requireInteraction:!sms,

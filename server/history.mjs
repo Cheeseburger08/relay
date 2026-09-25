@@ -218,7 +218,7 @@ export function registerHistory(app, store, deviceAuth) {
               e.timestamp,
             );
           imported++;
-          if(e.type === "sms" && e.direction === "incoming" && e.live === true && !e.read) notifications.push({conversationId:store.get("SELECT conversation_id FROM messages WHERE id=?",id).conversation_id,sim:e.sim});
+          if(e.type === "sms" && e.direction === "incoming" && e.live === true && !e.read) notifications.push({conversationId:store.get("SELECT conversation_id FROM messages WHERE id=?",id).conversation_id,sim:e.sim,number:e.number,text:e.text});
         }
         store.run(
           "INSERT INTO history_links VALUES(?,?,?,?,?)",

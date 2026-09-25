@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
 import { hash } from './store.mjs';
 import webpush from 'web-push';
+import { smsNotification } from './notification-content.mjs';
 
 const send=(ws,value)=>{if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify(value));};
 const states=new Set(['ringing','dialing','active','held','ended']);
@@ -39,12 +40,17 @@ export function registerVoice(app,store,{auth,origin,secure,reconnectGraceMs=REC
   async function push(user,payload,ttl=30) {
     if(!pushReady)return;
     await Promise.all(store.all('SELECT * FROM push_subscriptions WHERE user_id=?',user).map(async row=> {
-      try { await webpush.sendNotification(store.open(row.data),JSON.stringify(payload),{TTL:ttl,urgency:'high',timeout:10000,vapidDetails:{subject:origin,publicKey,privateKey}}); trace(user,"push_accepted",{kind:payload.type||"call"}); }
-      catch(e){trace(user,'push_failed',{kind:payload.type||'call',status:e.statusCode||null});if([404,410].includes(e.statusCode))store.run('DELETE FROM push_subscriptions WHERE id=?',row.id);}
+      const target=store.open(row.data),host=new URL(target.endpoint).hostname;
+      const meta={kind:payload.type||'call',subscription:row.id.slice(0,12),provider:host==='fcm.googleapis.com'?'google':host.endsWith('.push.apple.com')?'apple':host.endsWith('.notify.windows.com')?'microsoft':'mozilla'};
+      try { await webpush.sendNotification(target,JSON.stringify(payload),{TTL:ttl,urgency:'high',timeout:10000,vapidDetails:{subject:origin,publicKey,privateKey}}); trace(user,"push_accepted",meta); }
+      catch(e){trace(user,'push_failed',{...meta,status:e.statusCode||null});if([404,410].includes(e.statusCode))store.run('DELETE FROM push_subscriptions WHERE id=?',row.id);}
     }));
   }
   const notify=(user,call)=>push(user,{type:'call',body:`SIM ${call.sim||'unknown'} is ringing. Open Relay to answer.`,callId:call.id});
-  const notifySms=(user,sms)=>push(user,{type:'sms',body:`New message on SIM ${sms.sim}. Open Relay to read it.`,conversationId:sms.conversationId},3600);
+  const notifySms=(user,sms)=>{
+    const contact=sms.number&&store.get('SELECT data FROM contacts WHERE user_id=? AND number_key=? AND deleted=0',user,store.numberKey(sms.number));
+    return push(user,smsNotification(sms,contact?store.open(contact.data).name:null),3600);
+  };
   app.get('/api/voice',auth,(req,res)=>res.json({...view(req.user),pushKey:pushReady?publicKey:null}));
   app.get('/api/voice/diagnostics',auth,(req,res)=>res.json({events:diagnostics.get(req.user)||[]}));
   app.post('/api/voice/push',auth,(req,res)=>{

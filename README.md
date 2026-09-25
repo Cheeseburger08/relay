@@ -31,7 +31,7 @@ It works in my setup. It is still experimental, especially the device-specific l
 | **Contacts** | Import phone contacts, add/edit/delete names and numbers, and call directly after choosing a SIM. |
 | **Sync** | Synchronize supported message, call-log, contact, and blocked-number changes with the paired phone. Pending changes stay visible. |
 | **Multiple browsers** | One browser owns call audio at a time. **Use audio here** explicitly moves it to the browser you're using. |
-| **Interface** | Responsive desktop/mobile layout, light/dark/system themes, and browser call notifications where supported. |
+| **Interface** | Responsive desktop/mobile layout, light/dark/system themes, and browser call and SMS notifications where supported. |
 | **Self-hosting** | Private accounts, single-use phone pairing, a dedicated SQLite database, and no public registration. |
 
 The phone connects to your server over the network. USB is used for development, installation, and diagnostics; normal remote use does not depend on keeping a laptop attached.
