@@ -25,10 +25,12 @@ Include a nonstandard port in `PUBLIC_ORIGIN` if one is used. Configure certific
 
 Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` for Web Push. Generate your own pair, for example with the installed `web-push` CLI (`npx web-push generate-vapid-keys`). Keep the private key out of Git and logs. Notification delivery depends on browser support, permission, and OS background restrictions. On iPhone, test the Home Screen app flow. SMS alerts display the sender and message preview. Enable or disable notifications per browser in Settings.
 
+For delayed background delivery, use Settings → Test background notifications, then leave Relay for 30 seconds. Compare the visible alert with the result on return. Test on every intended browser, including the iPhone Home Screen app; provider acceptance alone does not establish background delivery.
+
+On Android, heat throttling can also hold Chrome's background push-processing job even when notification and background permissions are allowed. If the device is hot, unplug it and let it cool with the screen off, then repeat the test without opening Chrome or Relay. [Android's thermal job restrictions](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/apex/jobscheduler/service/java/com/android/server/job/restrictions/ThermalStatusRestriction.java) exempt foreground apps, so notifications appearing only after opening Chrome can be consistent with this restriction. That symptom alone does not identify the cause; device diagnostics are needed. Do not override thermal protection.
+
 ## Updates
 
 Back up runtime data before changing server code. Avoid restarting the service or reinstalling the phone app during a call. For frontend-only updates, keep old hashed assets available for browsers with an open page; replace the HTML only after uploading its new assets. Refresh outside an active call.
 
 Check `/api/health`, sign-in, phone connectivity, both SIMs, and actual two-way audio after deployment. A healthy HTTP endpoint alone does not prove that cellular calling works.
-
-For delayed background delivery, use Settings → Test background notifications, then leave Relay for 30 seconds. Compare the visible alert with the result on return. Test on every intended browser, including the iPhone Home Screen app; provider acceptance alone does not establish background delivery.
