@@ -1,3 +1,4 @@
+import { isPhoneNumber } from "../server/phone-number.mjs";
 import { CallAudioOutput } from "./audio-output.js";
 export class VoiceClient {
   constructor(csrf, changed) {
@@ -106,7 +107,8 @@ export class VoiceClient {
   }
   async dial(number,sim){
     if(this.state.busy)return;
-    if(!/^\+[1-9]\d{6,14}$/.test(number)){this.update({message:'Enter an international number, including +.'});return;}
+    number=typeof number==='string'?number.trim():number;
+    if(!isPhoneNumber(number)){this.update({message:'Enter a phone number.'});return;}
     this.update({busy:true,message:'Opening microphone…'});
     try{if(!await this.prepareAudio())return;this.send({type:'dial',number,sim});this.update({message:'Sending call request to phone…'});}catch(e){this.stopAudio();this.update({message:e.message,busy:false});}
   }

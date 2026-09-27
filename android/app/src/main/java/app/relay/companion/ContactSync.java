@@ -28,7 +28,7 @@ final class ContactSync {
                 JSONObject local=read(c,namespace,id);
                 if(!previous.optBoolean("deleted")) {
                     if(local==null || !previous.getString("name").equals(local.optString("name")) || !previous.getString("number").equals(local.optString("number"))) {
-                        if(changes.length()>=50 || (local!=null && (local.optString("name").trim().isEmpty() || local.optString("name").length()>80 || !local.optString("number").matches("\\+[1-9][0-9]{6,14}")))) { deferred.add(id); continue; }
+                        if(changes.length()>=50 || (local!=null && (local.optString("name").trim().isEmpty() || local.optString("name").length()>80 || !PhoneNumbers.valid(local.optString("number"))))) { deferred.add(id); continue; }
                         changes.put(new JSONObject(previous.toString()).put("deleted",local==null)
                             .put("name",local==null ? previous.getString("name") : local.optString("name",previous.getString("name")))
                             .put("number",local==null ? previous.getString("number") : local.getString("number")));
@@ -52,7 +52,7 @@ final class ContactSync {
             snapshot.put(row.getString("id"),row);
         }
         Vault.update(c,s->{s.put("contactNamespace",owner);s.put("contactSnapshot",snapshot);});
-        status=!deferred.isEmpty() ? "Some contact edits pending; use international numbers and nonempty names" : response.getJSONArray("conflicts").length()>0 ? "Contacts synced; panel versions resolved a conflict" : "Contacts synced with phone";
+        status=!deferred.isEmpty() ? "Some contact edits pending; check phone numbers and nonempty names" : response.getJSONArray("conflicts").length()>0 ? "Contacts synced; panel versions resolved a conflict" : "Contacts synced with phone";
     }
     private static String number(Context c,String value) {
         if(value==null) return "";
@@ -80,7 +80,7 @@ final class ContactSync {
             while(rows!=null && rows.moveToNext() && candidates.length()<50) {
                 String source=rows.getString(0), marker=rows.getString(4);
                 if(seen.contains(source) || (marker!=null && marker.startsWith("relay:"))) continue;
-                String normalized=number(c,rows.getString(3)); if(!normalized.matches("\\+[1-9][0-9]{6,14}")) continue;
+                String normalized=number(c,rows.getString(3)); if(!PhoneNumbers.valid(normalized)) continue;
                 String name=rows.getString(2); if(name==null || name.trim().isEmpty()) name=normalized;
                 if(name.length()>80) continue;
                 candidates.put(new JSONObject().put("source",source).put("name",name).put("number",normalized));

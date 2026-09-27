@@ -57,7 +57,7 @@ public class RelayInCallService extends InCallService {
         if(action.equals("dial")){
             if(current!=null)throw new IllegalStateException("Call already present");
             String number=msg.getString("number");int slot=msg.getInt("sim");
-            if(!number.matches("\\+[1-9][0-9]{6,14}")||!(slot==1||slot==2))throw new IllegalArgumentException("Invalid dial request");
+            if(!PhoneNumbers.valid(number)||!(slot==1||slot==2))throw new IllegalArgumentException("Invalid dial request");
             TelecomManager manager=context.getSystemService(TelecomManager.class);
             PhoneAccountHandle account=null;
             for(PhoneAccountHandle candidate:manager.getCallCapablePhoneAccounts())if(sim(context,candidate)==slot)account=candidate;

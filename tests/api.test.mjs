@@ -133,7 +133,7 @@ test("private phone API contract", async (t) => {
     "SMS queued once, claim once, confirmation and delivery transitions",
     async () => {
       const options = {
-        body: { number: "+12025550101", sim: 1, text: "Private test message" },
+        body: { number: "02025550101", sim: 1, text: "Private test message" },
         headers: { "Idempotency-Key": "test-message-0001" },
       };
       const first = await request("/messages", options);
@@ -166,6 +166,7 @@ test("private phone API contract", async (t) => {
         device: true,
       });
       assert.equal(c.data.command.id, commandId);
+      assert.equal(c.data.command.number, "02025550101");
       assert.equal(c.data.command.text, "Private test message");
       assert.equal(
         (
@@ -217,7 +218,7 @@ test("private phone API contract", async (t) => {
       const sms = {
           id: "incoming-0001",
           type: "sms",
-          number: "+12025550101",
+          number: "02025550101",
           sim: 1,
           timestamp: Date.now(),
           direction: "incoming",
@@ -226,7 +227,7 @@ test("private phone API contract", async (t) => {
         call = {
           id: "call-000001",
           type: "call",
-          number: "+12025550101",
+          number: "02025550101",
           sim: 1,
           timestamp: Date.now(),
           direction: "missed",
@@ -309,14 +310,14 @@ test("private phone API contract", async (t) => {
     const contents = readFileSync(join(dir, "relay.sqlite")).toString("utf8");
     assert.ok(!contents.includes("Private test message"));
     assert.ok(!contents.includes("Incoming secret"));
-    assert.ok(!contents.includes("+12025550101"));
+    assert.ok(!contents.includes("02025550101"));
     assert.ok(!contents.includes(token));
   });
   await t.test(
     "queued expiration and uncertain claimed SMS never auto-retry",
     async () => {
       const r = await request("/messages", {
-        body: { number: "+12025550101", sim: 1, text: "Expire me" },
+        body: { number: "02025550101", sim: 1, text: "Expire me" },
         headers: { "Idempotency-Key": "test-expire-001" },
       });
       store.run(
@@ -330,7 +331,7 @@ test("private phone API contract", async (t) => {
         "expired",
       );
       const u = await request("/messages", {
-        body: { number: "+12025550101", sim: 1, text: "Unknown result" },
+        body: { number: "02025550101", sim: 1, text: "Unknown result" },
         headers: { "Idempotency-Key": "test-unknown-001" },
       });
       await request("/device/commands/claim", { method: "POST", device: true });
@@ -506,7 +507,7 @@ test("private phone API contract", async (t) => {
         401,
       );
       const retry = await request("/messages", {
-        body: { number: "+12025550101", sim: 1, text: "Private test message" },
+        body: { number: "02025550101", sim: 1, text: "Private test message" },
         headers: { "Idempotency-Key": "test-message-0001" },
       });
       assert.equal(retry.status, 200);

@@ -21,8 +21,8 @@ android {
         applicationId 'app.relay.companion'
         minSdk 26
         targetSdk 28
-        versionCode 12
-        versionName '0.8.3'
+        versionCode 13
+        versionName '0.8.4'
     }
     buildTypes { release { minifyEnabled false } }
 }

@@ -1,3 +1,4 @@
+import { phoneNumberPattern } from "./phone-number.mjs";
 import express from "express";
 import helmet from "helmet";
 import { z } from "zod";
@@ -11,12 +12,7 @@ const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
 const SESSION_RENEW_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 const sim = z.union([z.literal(1), z.literal(2)]);
-const phone = z
-  .string()
-  .regex(
-    /^\+[1-9]\d{6,14}$/,
-    "Use an international number, e.g. +989121234567",
-  );
+const phone = z.string().trim().max(40).regex(phoneNumberPattern, "Enter a phone number");
 const identifier = z
   .string()
   .min(8)

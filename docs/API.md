@@ -166,7 +166,7 @@ Browser `POST /api/messages`, with `Idempotency-Key: RANDOM_UNIQUE_REQUEST_ID`:
 
 Returns HTTP 201 `{ "id": "MESSAGE_ID", "commandId": "COMMAND_ID", "replayed": false }`.
 Identical retries return 200/replayed true, even after phone removal. Reusing the
-same key with different content returns 409. Destination must be E.164, text
+same key with different content returns 409. Destination may be local, short, or international (up to 40 characters), text
 1-1,600 characters after trimming, SIM 1 or 2. GSM/UCS-2 segment calculation and
 carrier charges are not estimated yet; long messages can incur multiple charges.
 
@@ -253,7 +253,7 @@ an encrypted tombstone so an offline phone will remove the number on reconnect.
 device has acknowledged the current version. Unsynced saves show pending.
 
 Device POST `/api/device/contacts/import` accepts `contacts` (up to 50) with
-`source` (decimal provider row ID), `name` (1-80), `number` (E.164). It links by
+`source` (decimal provider row ID), `name` (1-80), `number` (local, short, or international; up to 40 characters). It links by
 account/number without overwriting an existing panel value; response gives
 `namespace` and `linked` source/id pairs. Up to 1,000 distinct numbers including
 tombstones. Existing deleted entries are not silently resurrected by import.
@@ -324,3 +324,5 @@ Incoming SMS events now trigger Web Push to the owner's existing notification su
 Notification previews are rendered directly from the encrypted Web Push payload, with no authenticated fetch required in the service worker. Push diagnostics retain provider category and a short subscription hash, never sender or message contents. Provider acceptance is not proof that the device displayed the notification.
 
 POST `/api/voice/push/test` schedules one synthetic notification after ten seconds to the current user's registered endpoint, with a 30-second cooldown. The worker posts an opaque short-lived receipt to `/api/voice/push/receipt` after its notification display promise resolves. Receipt uses a random capability and exact-origin checking, independently of session cookies. `/push/status` includes the result for that user/endpoint. State expires after ten minutes or service restart; disabling cancels pending tests. A receipt confirms browser handling, not that a person saw the alert; absence can also mean receipt network failure. No SMS is sent.
+
+2026-09-27: Companion 0.8.4 accepts local and short numbers for SMS, calls and contacts. Outgoing numbers retain their country prefix or leading zero; Relay trims surrounding whitespace but does not add a country code. Digits, an optional leading +, spaces, parentheses and hyphens are accepted, with a digit first after any +.

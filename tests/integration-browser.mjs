@@ -72,7 +72,7 @@ try {
     .filter({ visible: true })
     .click();
   await page.getByRole("button", { name: "New message", exact: true }).click();
-  await page.getByLabel("To", { exact: true }).fill("+12025550111");
+  await page.getByLabel("To", { exact: true }).fill("02025550111");
   await page
     .getByLabel("Message", { exact: true })
     .fill("Browser integration test");
@@ -94,7 +94,7 @@ try {
   await page
     .getByRole("button", { name: "Add to contacts", exact: true })
     .click();
-  await expect(page.getByLabel("Phone number")).toHaveValue("+12025550111");
+  await expect(page.getByLabel("Phone number")).toHaveValue("02025550111");
   await page.getByLabel("Name", { exact: true }).fill("SMS Contact");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.locator(".thread-person h2")).toHaveText("SMS Contact");

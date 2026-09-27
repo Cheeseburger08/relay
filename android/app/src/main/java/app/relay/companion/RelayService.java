@@ -135,7 +135,7 @@ public class RelayService extends Service {
         JSONObject state=Vault.read(this);
         if (Vault.object(state,"commands").has(id)) return;
         int subscription=Sims.subscription(this,command.getInt("sim"));
-        boolean valid=command.optString("type").equals("send_sms") && command.getString("number").matches("\\+[1-9][0-9]{6,14}")
+        boolean valid=command.optString("type").equals("send_sms") && PhoneNumbers.valid(command.getString("number"))
             && !command.getString("text").isEmpty() && command.getString("text").length()<=1600;
         SmsManager sms=subscription>=0 ? SmsManager.getSmsManagerForSubscriptionId(subscription) : null;
         ArrayList<String> parts=sms==null ? new ArrayList<>() : sms.divideMessage(command.getString("text"));

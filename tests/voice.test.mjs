@@ -81,8 +81,8 @@ test('Internet call authentication, isolation, signaling and media cleanup',asyn
  browser.close();
  phone.send(JSON.stringify({type:'state',call:null}));
  const second=await open('/api/voice/browser',{Origin:origin,Cookie:'relay_session='+session});
- second.send(JSON.stringify({type:'dial',number:'+12025550123',sim:1}));second.send(JSON.stringify({type:'dial',number:'+12025550123',sim:1}));
- await until(()=>second.messages.some(m=>m.type==='error'));assert.equal(phone.messages.filter(m=>m.action==='dial').length,1);
+ second.send(JSON.stringify({type:'dial',number:'02025550123',sim:1}));second.send(JSON.stringify({type:'dial',number:'02025550123',sim:1}));
+ await until(()=>second.messages.some(m=>m.type==='error'));assert.equal(phone.messages.filter(m=>m.action==='dial').length,1);assert.equal(phone.messages.find(m=>m.action==='dial').number,'02025550123');
  phone.send(JSON.stringify({type:'command_error',action:'dial'}));await until(()=>second.messages.some(m=>m.type==='state'&&m.call===null));
  call.id='explicit-end-call';call.state='active';phone.send(JSON.stringify({type:'state',call}));
  await until(()=>second.messages.some(m=>m.call?.id===call.id));

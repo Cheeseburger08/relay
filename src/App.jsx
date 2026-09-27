@@ -1955,8 +1955,8 @@ export default function App() {
                   name="number"
                   type="tel"
                   list="contacts-list"
-                  pattern="\+[1-9][0-9]{6,14}"
-                  placeholder="+country code and number"
+                  maxLength={40}
+                  placeholder="Local or international number"
                   defaultValue={modal.number || ""}
                   required
                 />
@@ -2051,10 +2051,10 @@ export default function App() {
                 <input
                   name="number"
                   type="tel"
-                  pattern="\+[1-9][0-9]{6,14}"
+                  maxLength={40}
                   defaultValue={modal.contact?.number || modal.number || ""}
                   readOnly={!!modal.contact}
-                  placeholder="+country code and number"
+                  placeholder="Local or international number"
                   required
                 />
               </label>

@@ -1,3 +1,4 @@
+import { isPhoneNumber } from "./phone-number.mjs";
 import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'node:crypto';
 import { hash } from './store.mjs';
@@ -164,7 +165,8 @@ export function registerVoice(app,store,{auth,origin,secure,reconnectGraceMs=REC
       if(msg.type==='check'){command(user,'check');return;}
       if(msg.type==='dial'){
         if(call&&call.state!=='ended'){send(ws,{type:'error',message:'A call is already in progress.'});return;}
-        if(!/^\+[1-9]\d{6,14}$/.test(msg.number)||![1,2].includes(msg.sim))return;
+        if(typeof msg.number==='string')msg.number=msg.number.trim();
+        if(!isPhoneNumber(msg.number)||![1,2].includes(msg.sim))return;
         // Mark pending immediately to prevent duplicate paid outgoing calls.
         calls.set(user,{id:randomUUID(),state:'dialing',number:msg.number,sim:msg.sim});controllers.set(user,ws);pending.set(user,Date.now());broadcast(user);command(user,'dial',{number:msg.number,sim:msg.sim});return;
       }
