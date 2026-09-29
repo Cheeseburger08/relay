@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { managementSchema } from './management.mjs';
+import { managementSchema, expirePendingHistoryDeletes } from './management.mjs';
 import {
   mkdirSync,
   existsSync,
@@ -83,6 +83,9 @@ export function createStore(directory) {
   db.exec(managementSchema);
   const get = (sql, ...args) => db.prepare(sql).get(...args);
   const run = (sql, ...args) => db.prepare(sql).run(...args);
+  // Legacy unmatched requests have no start time; cancel them on the next sync.
+  if (!all('PRAGMA table_info(pending_history_deletes)').some(c => c.name === 'created_at'))
+    db.exec('ALTER TABLE pending_history_deletes ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0');
   const contactColumns = new Set(
     all("PRAGMA table_info(contacts)").map((c) => c.name),
   );
@@ -147,6 +150,7 @@ export function createStore(directory) {
   }
   function expire() {
     transaction(() => {
+      expirePendingHistoryDeletes({all,run,seal});
       for (const c of all(
         "SELECT * FROM commands WHERE state='queued' AND expires<?",
         Date.now(),

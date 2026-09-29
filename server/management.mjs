@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {randomUUID,createHash} from 'node:crypto';
 export const managementSchema=`
-CREATE TABLE IF NOT EXISTS pending_history_deletes(user_id TEXT NOT NULL,kind TEXT NOT NULL,target_id TEXT NOT NULL,PRIMARY KEY(user_id,kind,target_id));
+CREATE TABLE IF NOT EXISTS pending_history_deletes(user_id TEXT NOT NULL,kind TEXT NOT NULL,target_id TEXT NOT NULL,created_at INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(user_id,kind,target_id));
 CREATE TABLE IF NOT EXISTS history_guards(device_id TEXT NOT NULL,source_id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(device_id,source_id));
 CREATE TABLE IF NOT EXISTS deleted_history(user_id TEXT NOT NULL,kind TEXT NOT NULL,target_id TEXT NOT NULL,PRIMARY KEY(user_id,kind,target_id));
 CREATE TABLE IF NOT EXISTS history_actions(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,device_id TEXT NOT NULL,source_id TEXT NOT NULL,kind TEXT NOT NULL,action TEXT NOT NULL,data TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',error TEXT);
@@ -9,6 +9,19 @@ CREATE TABLE IF NOT EXISTS blocked_numbers(id TEXT PRIMARY KEY,user_id TEXT NOT 
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status,code:'sync_conflict'});};
 const normalizeNumber=n=>{if(!/^[+0-9 ()-]+$/.test(n))return n;let p=n.replace(/[ ()-]/g,'');if(p.startsWith('00'))p='+'+p.slice(2);if(/^09\d{9}$/.test(p))p='+98'+p.slice(1);return p;};
 export function historyGuard(e){return {timestamp:e.timestamp,originalNumber:e.originalNumber,...(e.type==='sms'?{textHash:createHash('sha256').update(e.text).digest('hex')}:{})};}
+export const HISTORY_MATCH_TIMEOUT_MS = 5 * 60 * 1000;
+// Call inside the caller's transaction. Only unmatched requests can expire.
+export function expirePendingHistoryDeletes(store,user=null,now=Date.now()) {
+ const rows=store.all('SELECT * FROM pending_history_deletes WHERE created_at<=?'+(user?' AND user_id=?':''),now-HISTORY_MATCH_TIMEOUT_MS,...(user?[user]:[]));
+ for(const row of rows){
+  const table=row.kind==='sms'?'messages':'calls';
+  // Keep this unverified panel copy hidden, but cancel the phone deletion.
+  // A later provider record imports normally, without matching this stale copy.
+  store.run(`UPDATE ${table} SET data=?${row.kind==='sms'?',unread=0':''} WHERE id=? AND user_id=?`,store.seal({deleted:true}),row.target_id,row.user_id);
+  store.run('DELETE FROM pending_history_deletes WHERE user_id=? AND kind=? AND target_id=?',row.user_id,row.kind,row.target_id);
+ }
+ return rows.length;
+}
 export function removeHistory(store,user,kind,id,fromPhone=false){
  const table=kind==='sms'?'messages':'calls';
  const row=store.get(`SELECT * FROM ${table} WHERE id=? AND user_id=?`,id,user);
@@ -26,7 +39,7 @@ export function removeHistory(store,user,kind,id,fromPhone=false){
  if(command?.state==='queued')store.run("UPDATE commands SET state='cancelled' WHERE id=?",command.id);
  const awaitingLink=!fromPhone&&!link&&store.get('SELECT id FROM devices WHERE user_id=?',user)&&!(command&&['queued','cancelled','expired','failed'].includes(command.state));
  if(awaitingLink){
-  store.run('INSERT INTO pending_history_deletes VALUES(?,?,?)',user,kind,id);
+  store.run('INSERT INTO pending_history_deletes(user_id,kind,target_id,created_at) VALUES(?,?,?,?)',user,kind,id,Date.now());
   if(kind==='sms')store.run('UPDATE messages SET unread=0 WHERE id=?',id);
   return; // Retain encrypted matching fields until the exact provider identity arrives.
  }
@@ -48,6 +61,7 @@ export function registerManagement(app,store,auth,deviceAuth){
  app.post('/api/device/history/sync',deviceAuth,(req,res)=>{
   const body=z.object({missing:z.array(source).max(100),results:z.array(z.object({id:z.string().uuid(),ok:z.boolean(),error:z.enum(['permission','changed','unavailable']).optional()}).strict()).max(100)}).strict().parse(req.body);
   store.transaction(()=>{
+   expirePendingHistoryDeletes(store,req.user);
    for(const id of body.missing){const link=store.get('SELECT * FROM history_links WHERE device_id=? AND source_id=?',req.device.id,id);if(link)removeHistory(store,req.user,link.kind,link.target_id,true);}
    for(const r of body.results)store.run('UPDATE history_actions SET status=?,error=? WHERE id=? AND device_id=? AND user_id=?',r.ok?'done':'failed',r.ok?null:r.error||'unavailable',r.id,req.device.id,req.user);
   });

@@ -1,3 +1,4 @@
+import {expirePendingHistoryDeletes,HISTORY_MATCH_TIMEOUT_MS} from '../server/management.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
@@ -63,6 +64,31 @@ test('guarded history deletion, offline acknowledgments, phone changes and block
  assert.equal((await sync()).data.actions.filter(a=>a.source==='smsdb-951-9000').length,1,'reimport must not duplicate deletion');
  assert.ok(!store.state(user).messages.some(m=>m.id===lateId));
 
+ // A timed-out unmatched request must never delete a late phone record.
+ const timeoutId=secret(),timeoutDate=16000;
+ store.run('INSERT INTO messages VALUES(?,?,?,?,?,?)',timeoutId,user,late.id,store.seal({text:'Timeout fixture',sim:1,direction:'incoming',status:'received'}),timeoutDate,0);
+ await request('/messages/'+timeoutId,null,'DELETE');
+ const started=store.get('SELECT created_at FROM pending_history_deletes WHERE target_id=?',timeoutId).created_at;
+ assert.equal(store.transaction(()=>expirePendingHistoryDeletes(store,user,started+HISTORY_MATCH_TIMEOUT_MS-1)),0);
+ assert.equal(store.transaction(()=>expirePendingHistoryDeletes(store,other,started+HISTORY_MATCH_TIMEOUT_MS)),0,'account scope');
+ store.run('UPDATE pending_history_deletes SET created_at=? WHERE target_id=?',Date.now()-HISTORY_MATCH_TIMEOUT_MS-1,timeoutId);
+ await history([{...row,id:'smsdb-970-16000',timestamp:timeoutDate,sim:1,text:'Timeout fixture'}]);
+ assert.equal(store.state(user).historySync.awaitingHistory,0);
+ const phoneCopy=store.state(user).messages.find(m=>m.text==='Timeout fixture');
+ assert.ok(phoneCopy,'actual phone record is shown after timeout');
+ assert.notEqual(phoneCopy.id,timeoutId,'unverified old panel copy stays hidden');
+ assert.equal((await sync()).data.actions.some(a=>a.source==='smsdb-970-16000'),false,'late match cannot revive canceled deletion');
+ assert.deepEqual(store.open(store.get('SELECT data FROM messages WHERE id=?',timeoutId).data),{deleted:true});
+ await history([{...row,id:'smsdb-970-16000',timestamp:timeoutDate,sim:1,text:'Timeout fixture'}]);
+ assert.equal(store.state(user).messages.filter(m=>m.text==='Timeout fixture').length,1);
+ // Call history uses the same deadline, including when no browser is open.
+ const timeoutCall=secret();store.run('INSERT INTO calls VALUES(?,?,?,?)',timeoutCall,user,store.seal({number:row.number,sim:1,direction:'incoming',duration:2}),17000);
+ await request('/calls/'+timeoutCall,null,'DELETE');
+ const callStart=store.get('SELECT created_at FROM pending_history_deletes WHERE target_id=?',timeoutCall).created_at;
+ assert.equal(store.transaction(()=>expirePendingHistoryDeletes(store,user,callStart+HISTORY_MATCH_TIMEOUT_MS)),1,'expires at five minutes');
+ await history([{id:'call-971-17000',type:'call',number:row.number,originalNumber:row.number,sim:1,timestamp:17000,sentTimestamp:0,direction:'incoming',duration:2}]);
+ assert.ok(store.state(user).calls.some(c=>c.id!==timeoutCall));
+ assert.equal((await sync()).data.actions.some(a=>a.source==='call-971-17000'),false);
  const alerts=[];let refreshes=0;
  app.locals.voice.notifySms=async(user,sms)=>alerts.push({user,...sms});
  app.locals.voice.dataChanged=()=>refreshes++;
@@ -80,4 +106,17 @@ test('guarded history deletion, offline acknowledgments, phone changes and block
  assert.equal((await request('/voice/push',{endpoint:subscription.endpoint},'DELETE')).status,204);
  assert.equal((await request('/voice/push/status',{endpoint:subscription.endpoint})).data.enabled,false);
 
+});
+
+test('legacy pending deletion schema migrates without restarting its deadline',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'relay-deletion-migration-'));
+ let store=createStore(dir);
+ try {
+  store.db.exec('DROP TABLE pending_history_deletes; CREATE TABLE pending_history_deletes(user_id TEXT NOT NULL,kind TEXT NOT NULL,target_id TEXT NOT NULL,PRIMARY KEY(user_id,kind,target_id))');
+  store.run('INSERT INTO pending_history_deletes VALUES(?,?,?)','legacy-user','sms','legacy-message');
+  store.db.close();store=createStore(dir);
+  assert.equal(store.get('SELECT created_at FROM pending_history_deletes').created_at,0);
+  store.state('legacy-user');
+  assert.equal(store.all('SELECT * FROM pending_history_deletes').length,0);
+ } finally {store.db.close();rmSync(dir,{recursive:true,force:true});}
 });

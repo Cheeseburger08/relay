@@ -328,3 +328,5 @@ POST `/api/voice/push/test` schedules one synthetic notification after ten secon
 2026-09-27: Companion 0.8.4 accepts local and short numbers for SMS, calls and contacts. Outgoing numbers retain their country prefix or leading zero; Relay trims surrounding whitespace but does not add a country code. Digits, an optional leading +, spaces, parentheses and hyphens are accepted, with a digit first after any +.
 
 2026-09-29: State historySync adds awaitingHistory, the subset of pending deletions waiting for an exact phone-history link. These are distinct from queued phone actions and do not imply that the phone is offline. Existing pending and failed totals are unchanged.
+
+Unmatched history deletions expire after five minutes from the delete request. Expiry is checked before state reads, phone management sync, and history imports, so a late match cannot enqueue a deletion. The stale unverified panel copy stays hidden and its matching payload is erased; confirmed phone records remain visible or import normally. Already matched deletion actions keep their guarded acknowledgment flow. Legacy requests without a creation timestamp expire on the next sync.

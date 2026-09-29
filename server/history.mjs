@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { historyGuard } from './management.mjs';
+import { historyGuard, expirePendingHistoryDeletes } from './management.mjs';
 
 export function registerHistory(app, store, deviceAuth) {
   const record = z
@@ -48,6 +48,7 @@ export function registerHistory(app, store, deviceAuth) {
       matched = 0,
       duplicates = 0;
     store.transaction(() => {
+      expirePendingHistoryDeletes(store,req.user);
       for (const e of records) {
         const fingerprint = store.numberKey(JSON.stringify(e));
         let previous = store.get(
