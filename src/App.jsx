@@ -1,3 +1,4 @@
+import { historySyncMessage } from "./sync-status.js";
 import React, { useEffect, useRef, useState } from "react";
 import {
   MessageSquare,
@@ -767,9 +768,7 @@ export default function App() {
             0 && (
             <div className="connection-banner" role="status">
               <RefreshCw size={15} />
-              {data.historySync.failed
-                ? "Some changes need attention. Check the phone’s permissions."
-                : "Syncing changes when your phone is online…"}
+              {historySyncMessage(data.historySync, data.device?.online)}
             </div>
           )}
         {page === "Messages" ? (

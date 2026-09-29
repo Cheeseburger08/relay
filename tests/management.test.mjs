@@ -50,10 +50,12 @@ test('guarded history deletion, offline acknowledgments, phone changes and block
  assert.equal((await request('/messages/'+lateId,null,'DELETE')).status,204);
  assert.ok(!store.state(user).messages.some(m=>m.id===lateId));
  assert.equal(store.all('SELECT * FROM pending_history_deletes WHERE target_id=?',lateId).length,1);
+ assert.equal(store.state(user).historySync.awaitingHistory,1);
  await history([{...row,id:'smsdb-950-9001',timestamp:9001,sim:1,text:'Deferred fixture'}]);
  assert.equal(store.all('SELECT * FROM pending_history_deletes WHERE target_id=?',lateId).length,1,'similar message must not be deleted');
  await history([{...row,id:'smsdb-951-9000',timestamp:9000,sim:1,text:'Deferred fixture'}]);
  assert.equal(store.all('SELECT * FROM pending_history_deletes WHERE target_id=?',lateId).length,0);
+ assert.equal(store.state(user).historySync.awaitingHistory,0);
  assert.deepEqual(store.open(store.get('SELECT data FROM messages WHERE id=?',lateId).data),{deleted:true});
  const deferred=(await sync()).data.actions.filter(a=>a.source==='smsdb-951-9000');
  assert.equal(deferred.length,1);
